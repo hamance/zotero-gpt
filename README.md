@@ -1,135 +1,65 @@
-<div align="center">
-  <img src="imgs/background.png" width="50%" />
+# Zotero GPT
 
+Zotero GPT brings a **docked GPT chat panel** into Zotero. It runs on **Zotero 7 – 10** and talks to any **OpenAI-compatible** chat/embedding API (OpenAI, DeepSeek, Moonshot, Ollama, LM Studio, …). License: AGPL-3.0.
 
-# Awesome GPT
+The modernization branch is `dev/zetoro-10`; the staged plan and test log live in [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md).
 
+## ✨ Features
 
-👋
+- **Docked panel, not a floating window** — the chat lives in Zotero's right-hand item pane (and appears in the reader via the sidenav). No overlay that covers your library.
+- **Any OpenAI-compatible chat provider** — set your own base URL, model, API key, temperature. A blank key means *no `Authorization` header*, so local servers (Ollama, LM Studio) work out of the box.
+- **Streaming replies with Stop** — type a question and press `Enter`; press `Enter` again (or click Stop) to cancel a running reply.
+- **Selected-item context** — when an item is selected, its title/authors/date/abstract are attached as context so the model answers about that paper.
+- **Settings UI** (open by default on first run):
+  - *Chat*: base URL, API key, model (with refresh-from-`/v1/models`), temperature.
+  - *Embeddings*: enable, base URL, key, model, provider type, optional dimensions, and a **Test connection** button.
+- **Chat log** — below the conversation:
+  - `Export chat (.md)` writes the whole conversation to a Markdown file under `<Zotero data dir>/Zotero GPT/`.
+  - `Save as note` creates a Zotero note (attached to the selected item, or standalone) with the full transcript.
+- **Slash commands** (type in the input): `/clear`, `/api <url>`, `/model <id>`, `/key <key>`.
+- Localization: English + Chinese (Fluent/FTL).
 
-Welcome to share your command tag [here](https://github.com/MuiseDestiny/zotero-gpt/discussions/3) using [Meet API](src/modules/Meet/api.ts). 
-[✨ Download the latest xpi file](https://gitee.com/MuiseDestiny/plugins/raw/master/zotero-gpt.xpi)
+## 🚀 Quick start (中文)
 
+1. 安装：`Zotero → 工具 → 附加组件 → 齿轮 → Install Add-on From File…`，选择 `zotero-gpt.xpi`，重启 Zotero。
+2. 选中任一文献，右侧信息栏会多出 **Zotero GPT** 分区（或点击侧栏图标）。
+3. 顶部 **设置** 面板（首次自动展开）：
+   - **对话**：接口地址如 `https://api.deepseek.com`（本地可 `http://localhost:11434`），模型如 `deepseek-chat` / `gpt-4o-mini`；托管服务填 API Key，**本地服务可留空**。
+   - **嵌入（可选）**：填嵌入接口/模型后点 **测试连接**；对话与嵌入可分别用不同服务。
+4. 提问 → `Enter` 流式回复；`Enter` 停止。
+5. 对话记录：点 **导出对话 (.md)** 存成 Markdown 到 Zotero 数据目录的 `Zotero GPT/` 文件夹；点 **保存为笔记** 把整段对话整理成当前文献下的笔记。
 
-
-[![Using Zotero Plugin Template](https://img.shields.io/badge/Using-Zotero%20Plugin%20Template-blue?style=flat-round&logo=github)](https://github.com/windingwind/zotero-plugin-template)
-[![Latest release](https://img.shields.io/github/v/release/MuiseDestiny/zotero-gpt)](https://github.com/MuiseDestiny/zotero-gpt/releases)
-![Release Date](https://img.shields.io/github/release-date/MuiseDestiny/zotero-gpt?color=9cf)
-[![License](https://img.shields.io/github/license/MuiseDestiny/zotero-gpt)](https://github.com/MuiseDestiny/zotero-gpt/blob/master/LICENSE)
-![Downloads latest release](https://img.shields.io/github/downloads/MuiseDestiny/zotero-gpt/latest/total?color=yellow)
-
-
-  <img src="https://user-images.githubusercontent.com/51939531/228763331-90baa9aa-8bef-4b32-9d6f-35538b58b158.png" width="80%" />
-
-</div>
-
-
----
-
-## 🚀 Main Features
-Features about GPT:  
-- [x] 🔗 **Integrate with Zotero**: You can use the plugin to search and ask items in the library based on the selected text or the PDF file.
-- [x] 🧠 Use GPT to generate reply text: support `gpt-3.5-turbo` and `gpt-4`
-- [x] 🏷️ [Command tags](https://github.com/MuiseDestiny/zotero-gpt#command-tags): **Click once** to accelerate your research.  
-  - [x] 💬 Ask questions about current **PDF file** (full-text or selected text).
-  - [x] 💬 Ask questions about **selected paper** (Abstract).
-  - [x] 📝 **Summarize the selected paper** into several highly condensed sentences.
-  - [x] 🔍 **Search items** in the library based on the selected text.
-  - [x] ... ...
-- [x] ⚙️ **Advanced settings for GPT**: You can set the [api key](https://platform.openai.com/account/api-keys), [model name](https://platform.openai.com/docs/api-reference/chat/create#chat/create-model), [api url](https://platform.openai.com/docs/api-reference/chat/create), [temperature](https://platform.openai.com/docs/api-reference/chat/create#chat/create-temperature).
-- [x] 📚 **Integrate with Better Notes**: You can directly open this plugin when using [Better Notes](https://github.com/windingwind/zotero-better-notes).
-
-Features about UI:
-- [x] 🎨 **Real-time markdown rendering** for reply text: Latex and mathjax are supported.
-- [x] 🔍 **Zoom in and out** of the reply text or the size of the plugin window.
-- [x] 🖱️ **Move the plugin window to any position** on the screen.
-- [x] 📋 **Copy the reply text** to the clipboard.
-- [x] ⚠️ Detailed **error message** will be displayed when the request fails.
-- [x] 🔧 Compatible with **Zotero 6** and **Zotero 7**.
-- [x] 🎉 Discover more exciting features that are not listed here.
-
-
-## How to use
-- [x] Get `.xpi` file
-  - [ ] [download latest](https://github.com/MuiseDestiny/zotero-gpt/releases/latest/download/zotero-gpt.xpi) release `.xpi` file
-  - [ ] or build this project [1] to generate a `.xpi` file
-- [x] Install `.xpi` file in Zotero [2]
-- [x] Open Zotero GPT [3]
-- [x] Set your `OpenAI` secret key [4]
-
-### [1] Build the project
-Here is an example on how to build this project. For more information on how to build, please visit this project: [https://github.com/windingwind/zotero-plugin-template](https://github.com/windingwind/zotero-plugin-template)
+## 🔧 Build / dev
 
 ```bash
-git clone https://github.com/MuiseDestiny/zotero-gpt.git
-cd zotero-gpt
 npm install
-npm run build
-```
-The generated `.xpi` file in the build directory is the extension that you can install in Zotero.
-
-### [2] Install the extension in Zotero
-Open Zotero. In the top menu bar, click on `Tools > Add-ons`.
-Click on the gear icon at the top right of the window. Click on `Install Add-on From File` and open the generated `.xpi` file in the build directory from the previous step.
-
-### [3] Open/Exit Zotero GPT
-
-|Action|Shortcut|
-|--|--|
-|Open|<img src="https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/f76b23ee-8c54-47da-823c-8c14faa88a87" width="20%">|
-|Exit|`ESC`|
-|Multi-line editing| `Shift` + `Enter`|
-
-### [4] Set up the API key
-
-![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/225c468a-acfc-43be-b5ac-cf6aaaa33e96)
-
-## Hi, Command Tag.
-> 👻 Follow the steps below, and you will gain a new understanding of command tags.
-
-|Step| Description | Supplementary Information |
-|----|-------------|---------------------------|
-|1   | Open Zotero GPT | Refer to [3] Open/Exit Zotero GPT |
-|2   | Type `#Tag Name` and press `Enter` | ![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/52f776fc-5592-4c17-8c36-7769c537ef79) |
-|3   | Input your prompt or code | ![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/6f6d9985-69e5-4d29-ba78-df31e30e9cd1) |
-|4   | **R**un your tag | Press `Ctrl + R` |
-|5   | **S**ave your tag | Press `Ctrl + S` |
-|6   | Long press a command tag to access the editing interface | ![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/28235117-79ab-43c6-b175-079e609683f4) |
-|7   | Modify the tag's color, position, or trigger; remember to save with `Ctrl + S` | ![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/5261878a-30ce-4ea5-b3be-9c6b9ef29f70) |
-|8   | Press `ESC` to exit the editing interface | Remember to save your changes with `Ctrl + S` before exiting |
-|9   | Long press the right mouse button to delete a tag | Note: Build-in tags do not support deletion |
-
-### How to run a command tag
-> Trigger is an attribute of a command tag, as are color and position. Long press any label to view/modify its trigger word. It supports both plain text and JS regular expressions.
-
-![How to run a command tag](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/fdfc369a-1e96-478c-a7c2-4a93d2d7a580)
-
-![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/d7f857a4-9ed9-42af-8662-6336ce70a881)
-
-
-### How to write a code block
-
-You can find some build-in APIs [here](https://github.com/MuiseDestiny/zotero-gpt/blob/bootstrap/src/modules/Meet/api.ts).
-
-A simple example:
-```
-Summarize the following paragraph for me:
-
-${Meet.Zotero.getPDFSelection()}
+npm run build        # zotero-plugin build + tsc --noEmit (strict); must pass before commit
+npm test             # launches Zotero (set ZOTERO_PLUGIN_ZOTERO_BIN_PATH to zotero.exe) and runs mocha
+npm run tsc          # typecheck only
+npm start            # dev install + hot reload (remote debugging)
+npm run build-dev / build-prod
 ```
 
-Here, the `Summarize the following paragraph for me:` represents plain text, while `${your code}` denotes a code snippet. Undoubtedly, if you are familiar with Zotero APIs, you can develop your own code. The code snippet will be executed, and the text returned by the code snippet will replace the code snippet. Finally, the replaced text will be input to GPT. So, theoretically, you can **accomplish all interactions** between Zotero and GPT using command tags.
+The installable artifact is produced at `.scaffold/build/zotero-gpt.xpi`.
 
-### How to navigate historical chats
+## 🗂️ Project structure
 
-> Press the up (↑) and down (↓) keys on the keyboard to navigate.
+- `src/` — `index.ts` (entry), `addon.ts` (singleton), `hooks.ts` (lifecycle),
+  `modules/panel.ts` (docked section + settings UI + actions),
+  `modules/provider.ts` (chat + embedding providers), `modules/chatlog.ts` (Markdown export / note), `utils/`.
+- `addon/` — scaffold assets (`bootstrap.js`, `manifest.json`, `prefs.js`, `content/`, `locale/`).
+- `test/` — mocha tests that run inside Zotero.
+- `legacy/`, `tags/`, `imgs/` — pre-migration code/assets kept for reference (not wired into the current build).
+- `MIGRATION_PLAN.md` — stage plan, decisions, and the test log.
 
-![image](https://github.com/MuiseDestiny/zotero-gpt/assets/51939531/ca2dcfbf-efb4-4ba3-8339-5277a879e3ea)
+## 📋 Status & limitations
 
-### GPT Tag Recommendation
-Automatically create tags for entries: [open and copy](https://github.com/MuiseDestiny/zotero-gpt/blob/bootstrap/tags/Add-Controlled-Tagger) then open Zotero, this tag will be automatically imported into Zotero.
+See [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md). Notable notes:
 
-## Support the project
+- Zotero 6 support was dropped; the manifest targets `7.0.0 → 10.0.*`.
+- Legacy **command tags / Meet API** and Better Notes integration are **not ported** to the new docked panel yet (kept under `legacy/`).
+- Replies are rendered as plain text (no Markdown/LaTeX rendering yet); embedding config + provider are ready, but full RAG/AskPDF retrieval is not wired yet.
 
-[Here](https://github.com/MuiseDestiny/zotero-reference#%E8%B5%9E%E5%8A%A9)
+## ❤️ Support the project
 
+If you find it useful, star/watch the repo and report issues — see the [original project](https://github.com/MuiseDestiny/zotero-gpt).
