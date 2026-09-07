@@ -9,7 +9,7 @@
 | # | Stage | Status |
 |---|-------|--------|
 | 0 | Make the repo build again (remove external `../../validation/core` import + dead `zotero-adv-installer: file:..` dep); `npm install` + bundle + typecheck green | **Done** |
-| 1 | Modern scaffold: current `zotero-plugin-toolkit` 5.x / `zotero-types` 4.x, ESM bootstrap, drop Z6, `strict_min_version 7.0` / `strict_max_version 10.0.*`, `.ftl` locale | In progress — version targeting + dev harness done; scaffold/toolkit migration next |
+| 1 | Modern scaffold: `zotero-plugin-scaffold` CLI, toolkit 5.x / zotero-types 4.x, ESM bootstrap, drop Z6, `strict_min 7.0` / `strict_max 10.0.*`, FTL locale | **Done** (boots + passes on FF140 Zotero) |
 | 2 | Docked side panel: register `Zotero.Reader.registerReaderTabPanel(...)` (reader) and/or `Zotero.ItemPaneManager.registerSection(...)` (item pane); port chat UI from the floating `position:fixed` overlay; delete drag/zoom/position + reader-`eval`/`.selection-popup` hacks | Planned |
 | 3 | Custom providers: OpenAI-compatible **chat** provider with model auto-discovery; **independent embedding provider** (own URL/key/model, local-model support); vector-cache correctness fixes; real settings UI. Detail below. | Planned |
 
@@ -81,5 +81,6 @@ Embeddings may live on a different host, use a different model/key, or run **loc
 - Next: adopt the current official scaffold (`zotero-plugin.config.ts`, toolkit 5.x) — it provides `start` dev-install/hot-reload — and migrate the ESM bootstrap; then verify the addon actually boots on FF140 before porting the panel.
 - Remaining Z6 cleanup (folded into scaffold migration): remove `install.rdf`, Z6 `waitForZotero`/`setDefaultPrefs` paths in `addon/bootstrap.js`, prune dead deps, replace `langchain/document` type with a local type.
 - Stage 0 — see git log (build restored, typecheck/build green).
-- Stage 1 (partial) — version targeting + dev harness; scaffold migration in progress.
+- Stage 1 — modern scaffold migration; Z6 dropped; boots + harness tests pass on FF140 Zotero (see log).
+
 

@@ -1,12 +1,10 @@
 {
+  "extends": "zotero-types/entries/sandbox/",
   "compilerOptions": {
     "experimentalDecorators": true,
-    "module": "commonjs",
-    "target": "ES2016",
     "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "strict": true
+    "skipLibCheck": true
   },
-  "include": ["src", "typing", "node_modules/zotero-types"],
-  "exclude": ["builds", "addon"]
+  "include": ["src", "typings"],
+  "exclude": [".scaffold", "builds", "addon", "legacy"]
 }

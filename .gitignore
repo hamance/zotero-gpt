@@ -4,6 +4,14 @@ package-lock.json
 zotero-cmd.json
 README.md
 .env
-**/test
 # Local dev Zotero profile (runtime smoke tests)
 profiles/
+
+# zotero-plugin-scaffold build output
+.scaffold/
+
+
+# TypeScript / scaffold generated
+tsconfig.tsbuildinfo
+typings/i10n.d.ts
+typings/prefs.d.ts

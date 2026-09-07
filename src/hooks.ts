@@ -1,7 +1,4 @@
 import { config } from "../package.json";
-import { getString, initLocale } from "./modules/locale";
-import Views from "./modules/views";
-import Utils from "./modules/utils";
 
 async function onStartup() {
   await Promise.all([
@@ -9,26 +6,44 @@ async function onStartup() {
     Zotero.unlockPromise,
     Zotero.uiReadyPromise,
   ]);
-  initLocale();
-  ztoolkit.ProgressWindow.setIconURI(
-    "default",
-    `chrome://${config.addonRef}/content/icons/favicon.png`
+  ztoolkit.log("onStartup");
+
+  await Promise.all(
+    Zotero.getMainWindows().map((win) => onMainWindowLoad(win)),
   );
 
-  Zotero[config.addonInstance].views = new Views();
+  // Confirms plugin load status to the scaffold test/serve process.
+  addon.data.initialized = true;
+}
 
-  Zotero[config.addonInstance].utils = new Utils();
+async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
+  ztoolkit.log("onMainWindowLoad", win?.location?.href);
+
+  new ztoolkit.ProgressWindow(config.addonName, {
+    closeOnClick: true,
+    closeTime: 4000,
+  })
+    .createLine({
+      text: "Zotero GPT loaded",
+      type: "default",
+    })
+    .show();
+}
+
+async function onMainWindowUnload(win: Window): Promise<void> {
+  ztoolkit.unregisterAll();
 }
 
 function onShutdown(): void {
   ztoolkit.unregisterAll();
-  // Remove addon object
   addon.data.alive = false;
+  // @ts-expect-error - Plugin instance is not typed
   delete Zotero[config.addonInstance];
 }
 
 export default {
   onStartup,
   onShutdown,
+  onMainWindowLoad,
+  onMainWindowUnload,
 };
-

@@ -1,34 +1,26 @@
-import ZoteroToolkit from "zotero-plugin-toolkit/dist/index";
-import { ColumnOptions } from "zotero-plugin-toolkit/dist/helpers/virtualizedTable";
+import { config } from "../package.json";
+import ZoteroToolkit from "zotero-plugin-toolkit/ztoolkit";
 import hooks from "./hooks";
+import { createZToolkit } from "./utils/ztoolkit";
 
 class Addon {
   public data: {
     alive: boolean;
-    // Env type, see build.js
+    config: typeof config;
     env: "development" | "production";
-    // ztoolkit: MyToolkit;
+    initialized?: boolean;
     ztoolkit: ZoteroToolkit;
-    locale?: {
-      stringBundle: any;
-    };
-    prefs?: {
-      window: Window;
-      columns: Array<ColumnOptions>;
-      rows: Array<{ [dataKey: string]: string }>;
-    };
   };
-  // Lifecycle hooks
   public hooks: typeof hooks;
-  // APIs
-  public api: {};
+  public api: Record<string, unknown>;
 
   constructor() {
     this.data = {
       alive: true,
+      config,
       env: __env__,
-      // ztoolkit: new MyToolkit(),
-      ztoolkit: new ZoteroToolkit(),
+      initialized: false,
+      ztoolkit: createZToolkit(),
     };
     this.hooks = hooks;
     this.api = {};
@@ -36,3 +28,4 @@ class Addon {
 }
 
 export default Addon;
+
