@@ -1,46 +1,45 @@
 # Repository Guidelines
 
-Zotero GPT is a Zotero 6/7 add-on (TypeScript, built on `zotero-plugin-toolkit`) that brings GPT chat and one-click "command tags" into Zotero. License: AGPL-3.0.
+Zotero GPT is a Zotero 7–10 add-on (TypeScript/ESM, `zotero-plugin-scaffold` + `zotero-plugin-toolkit`) that adds a docked GPT chat panel to the item pane/reader and talks to any OpenAI-compatible API. License: AGPL-3.0. The `dev/zetoro-10` branch is the modernization line; `MIGRATION_PLAN.md` tracks stages and the test log.
 
 ## Project Structure & Module Organization
 
-- `src/` — TypeScript source:
-  - `index.ts` (entry), `addon.ts` (singleton), `hooks.ts` (lifecycle: `onStartup`/`onShutdown`).
-  - `modules/` — `views.ts` (UI panel), `utils.ts`, `locale.ts`, `localStorage.ts`, `base.ts`.
-  - `modules/Meet/` — `api.ts` (user-facing **Meet API** for command tags), `OpenAI.ts`, `Zotero.ts`, `BetterNotes.ts`.
-- `addon/` — plugin scaffold: `bootstrap.js`, `manifest.json`, `install.rdf`, `chrome/content/` (icons, `md.css`), `chrome/locale/` (`en-US`, `zh-CN`).
-- `scripts/` — `build.js`, `start.js`, `stop.js`.
-- `tags/` — built-in command-tag prompts (`*.txt`); `typing/` — type declarations; `imgs/` — README assets.
-- Build output lands in gitignored `builds/` as the installable `.xpi`.
+- `src/` — TypeScript source: `index.ts` (entry), `addon.ts` (singleton), `hooks.ts` (lifecycle), `modules/panel.ts` (docked item-pane section + settings UI), `modules/provider.ts` (OpenAI-compatible chat provider), `utils/` (`locale.ts`, `ztoolkit.ts`).
+- `addon/` — scaffold assets: `bootstrap.js`, `manifest.json`, `prefs.js`, `content/` (icons, `md.css`), `locale/{en-US,zh-CN}/addon.ftl`.
+- `test/` — mocha tests that run inside Zotero.
+- `legacy/` (plus `tags/`, `imgs/`) — pre-migration code kept for reference; excluded from the build.
+- Generated and gitignored: `.scaffold/build`, `typings/i10n.d.ts`, `typings/prefs.d.ts`.
 
 ## Build, Test, and Development Commands
 
 - `npm install` — install dependencies.
-- `npm run build-dev` — esbuild development bundle into `builds/`.
-- `npm run build` — production bundle plus `tsc --noEmit` type check.
-- `npm run start` / `start-z6` / `start-z7` — launch Zotero (7 by default) with the plugin loaded; `npm run stop` closes it.
-- `npm run restart-dev` — rebuild, stop, and relaunch; use this while iterating.
-- `npm run release` — cut a release via `release-it` (maintainers).
+- `npm run build` — `zotero-plugin build && tsc --noEmit` (strict); must pass before committing.
+- `npm run tsc` — typecheck only.
+- `npm test` — builds, launches Zotero (set `ZOTERO_PLUGIN_ZOTERO_BIN_PATH` to `zotero.exe` if needed), and runs mocha in `test/`.
+- `npm start` / `npm stop` — dev-install with hot reload; `npm run build-dev` / `build-prod` — dev/prod bundles.
+- `npm run release` — cut a release (maintainers).
 
 ## Coding Style & Naming Conventions
 
-- TypeScript, 2-space indentation, double-quoted imports, semicolons. No ESLint/Prettier is configured — match surrounding code.
-- `tsconfig.json` uses `strict: true`, ES2016, CommonJS. Run `npm run tsc` before submitting.
-- Classes are PascalCase (`Addon`, `Views`, `Utils`); place new helpers under `src/modules/`.
-- User-facing strings go in `addon/chrome/locale/` (both `en-US` and `zh-CN`); expose new tag features via `src/modules/Meet/api.ts`.
+- TypeScript `strict: true`; 2-space indentation, double quotes, semicolons. No ESLint/Prettier — match surrounding code.
+- Classes are PascalCase (`Addon`, `ChatPanel`); helpers camelCase; UI/CSS classes prefixed `zoterogpt-`.
+- User-facing strings live in both FTL files under `addon/locale/` using unprefixed keys (the scaffold adds the `zoterogpt-` prefix at build).
+- Declare prefs in `addon/prefs.js` unprefixed; read them as `Zotero.Prefs.get("zoterogpt.<key>")`.
 
 ## Testing Guidelines
 
-There is no test framework. Validate with `npm run restart-dev`, exercise the UI, and check Zotero 6 and 7 when UI or APIs change. Test tag prompts in the tag editor (`Ctrl+R` run, `Ctrl+S` save). Use the templates under `.github/ISSUE_TEMPLATE/` for bug reports.
+- Mocha + chai; `npm test` runs `test/*.test.ts` inside Zotero.
+- Mock `Zotero.HTTP.request` for provider/network tests (stream SSE chunks via `onprogress`/`onload`).
+- The harness cannot connect the custom item-pane section, so UI tests mount `addon.api.renderPanel(body)` into a live document and assert framework callback counters.
+- Update the test log in `MIGRATION_PLAN.md` at each stage; build and tests must pass before the stage is committed.
 
 ## Commit & Pull Request Guidelines
 
-- Use short, imperative commit messages, as in history: `add embeddingBatchNum to param`, `fix ${} bug`, `Update README.md`.
-- Keep commits focused on one logical change.
-- PRs should state what changed and why, link the related issue, and include screenshots/GIFs for UI changes. Ensure `npm run build` passes.
+- Follow Conventional Commits as in history: `feat(panel): …`, `refactor(scaffold): …`, `fix(build): …`, `docs: …`.
+- Keep each commit one logical change; commit a stage only after `npm run build` and `npm test` pass.
+- PRs: describe what and why, link the issue, and include screenshots/GIFs for UI changes.
 
 ## Security & Configuration
 
-- Never commit secrets: `.env` is gitignored and users enter their OpenAI API key in plugin settings — never hard-code keys.
-- Add-on metadata (ID, name, version) lives under `config` in `package.json`; bump it there for releases.
-
+- Never commit secrets; users enter API keys at runtime (stored in prefs) — never hard-code keys.
+- A blank key means "no `Authorization` header" (for keyless local servers such as Ollama/LM Studio).
