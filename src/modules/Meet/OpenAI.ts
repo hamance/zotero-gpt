@@ -90,7 +90,7 @@ class OpenAIEmbeddings {
     let api = Zotero.Prefs.get(`${config.addonRef}.api`) as string
     api = api.replace(/\/(?:v1)?\/?$/, "")
     const secretKey = Zotero.Prefs.get(`${config.addonRef}.secretKey`)
-    const split_len = Zotero.Prefs.get(`${config.addonRef}.embeddingBatchNum`)
+    const split_len = Number(Zotero.Prefs.get(`${config.addonRef}.embeddingBatchNum`)) || 10
     let res
     const url = `${api}/v1/embeddings`
     if (!secretKey) {
@@ -99,7 +99,7 @@ class OpenAIEmbeddings {
         .show()
       return
     }
-    var final_embeddings=[]
+    var final_embeddings: any[] = []
     for (let i = 0; i < input.length; i += split_len) {
 
       const chunk = input.slice(i, i + split_len)
@@ -338,3 +338,4 @@ export async function getGPTResponseBy(
   })
   return responseText
 }
+

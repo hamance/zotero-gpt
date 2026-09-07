@@ -1103,7 +1103,7 @@ export default class Views {
         alignItems: "center",
         justifyContent: "center",
       }
-    }, this.outputContainer)
+    }, this.outputContainer) as HTMLElement
     docs.forEach((doc: Document, index: number) => {
       ztoolkit.UI.appendElement({
         namespace: "html",
@@ -1248,7 +1248,7 @@ export default class Views {
         }
         return arr
       })() as any
-    }, document.documentElement)
+    }, document.documentElement) as HTMLElement
     
     const winRect = document.documentElement.getBoundingClientRect()
     const nodeRect = menuNode.getBoundingClientRect()
@@ -1391,4 +1391,5 @@ export default class Views {
     );
   }
 }
+
 

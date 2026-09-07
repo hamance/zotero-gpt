@@ -2,10 +2,8 @@ import { config } from "../package.json";
 import { getString, initLocale } from "./modules/locale";
 import Views from "./modules/views";
 import Utils from "./modules/utils";
-import { initValidation } from "../../validation/core";
 
 async function onStartup() {
-  initValidation(config.addonRef); 
   await Promise.all([
     Zotero.initializationPromise,
     Zotero.unlockPromise,
@@ -33,3 +31,4 @@ export default {
   onStartup,
   onShutdown,
 };
+
