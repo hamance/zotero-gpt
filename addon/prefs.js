@@ -4,7 +4,7 @@ pref("secretKey", "");
 pref("model", "gpt-4o-mini");
 pref("embeddingModel", "text-embedding-ada-002");
 pref("temperature", "1.0");
-pref("chatNumber", 3);
+pref("chatNumber", 12);
 pref("relatedNumber", 5);
 pref("embeddingBatchNum", 10);
 pref("deltaTime", 100);
