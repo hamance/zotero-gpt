@@ -116,3 +116,12 @@ Embeddings may live on a different host, use a different model/key, or run **loc
 - **Verification (real connected section inside the harness):** `item-pane-custom-section` connected → `collapsible-section` has `label="Zotero GPT"`, `.head` present, `[data-type="body"]` present with `.zoterogpt-panel`; computed `display:flex`; panel rect 304×234 (real layout); sidenav `.btn[custom]` now icon-only with `tooltiptext` set and empty text. New permanent regression test in `test/panel.test.ts` asserts head/body/panel survive l10n and have non-zero rect.
 - `test/startup.test.ts` updated: `panel-title` now has no value — assert the `.label` attribute instead.
 - Gates: `npm run build` green; `npm test` → **17 passed** (startup 4 + docked panel 5 + provider 8).
+
+### Stage 2 fix 2 — docked panel UI polish (2026-09-08, after user report)
+- **Report:** header icon looked large, gear button invisible, chat area looked blank.
+- **Fixes:**
+  - Ship native-size icons instead of scaling at runtime: generated `addon/content/icons/icon16.png` (16px, header) and `icon20.png` (20px, sidenav) from `favicon.png`; removed the CSS `background-size` overrides.
+  - Gear button no longer relies on the `⚙` text glyph (not present in all fonts): replaced with an SVG icon `addon/content/icons/gear.svg` rendered as the button background; button is 30x30 with a localized tooltip (`settings-title`).
+  - Made the empty state visually read as a chat box: `.zoterogpt-messages` now has a white background + 1px border + radius; `.zoterogpt-empty` gets padding.
+- Gates: `npm run build` green; `npm test` → **17 passed**.
+- Note: a real screenshot could not be captured — the scaffold test instance opens Zotero with a hidden window (no HWND), so visual confirmation is still manual via the xpi.

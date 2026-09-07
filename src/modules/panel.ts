@@ -41,11 +41,11 @@ function bump(key: string) {
 
 const PANEL_CSS = `
 .${REF}-panel{display:flex;flex-direction:column;gap:8px;padding:6px;font-size:13px;}
-.${REF}-messages{display:flex;flex-direction:column;gap:6px;min-height:110px;max-height:420px;overflow-y:auto;}
+.${REF}-messages{display:flex;flex-direction:column;gap:6px;min-height:110px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:6px;}
 .${REF}-msg{padding:6px 8px;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;line-height:1.4;}
 .${REF}-msg.user{align-self:flex-end;background:#e8f3ff;color:#0a2540;max-width:85%;}
 .${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:95%;}
-.${REF}-empty{color:#888;font-style:italic;}
+.${REF}-empty{color:#888;font-style:italic;padding:8px 4px;}
 .${REF}-hint{color:#9a6700;background:#fff8c5;border:1px solid #e0c366;border-radius:6px;padding:4px 8px;font-size:12px;}
 .${REF}-hint[hidden]{display:none;}
 .${REF}-settings{display:flex;flex-direction:column;gap:6px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
@@ -60,11 +60,8 @@ const PANEL_CSS = `
 .${REF}-input-row{display:flex;gap:6px;align-items:flex-end;}
 .${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;font:inherit;}
 .${REF}-send{border:none;border-radius:6px;padding:6px 14px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
-.${REF}-gear{border:1px solid #d4d4d8;border-radius:6px;padding:6px 10px;background:#fff;cursor:pointer;font-size:14px;line-height:1;}
+.${REF}-gear{width:30px;height:30px;flex:0 0 auto;border:1px solid #d4d4d8;border-radius:6px;background:#fff url("chrome://${REF}/content/icons/gear.svg") center/16px 16px no-repeat;cursor:pointer;}
 
-/* Fit our 32px png into Zotero item-pane icon slots (16px header, 20px sidenav). */
-item-pane-custom-section[data-pane*="zoterogpt-chat"] collapsible-section>.head .title::before{background-size:16px 16px;}
-item-pane-sidenav .btn[data-pane*="zoterogpt-chat"]{background-size:20px 20px;}
 `;
 
 const BODY_XHTML = `
@@ -87,7 +84,7 @@ const BODY_XHTML = `
   <html:div class="${REF}-input-row">
     <html:textarea class="${REF}-input" rows="2"></html:textarea>
     <html:button class="${REF}-send" type="button"></html:button>
-    <html:button class="${REF}-gear" type="button">&#9881;</html:button>
+    <html:button class="${REF}-gear" type="button"></html:button>
   </html:div>
 </html:div>`;
 
@@ -239,7 +236,6 @@ function wire(body: HTMLElement) {
 
   // Localized labels (re-applied on every render; cheap).
   input.setAttribute("placeholder", getString("panel-placeholder"));
-  gear.textContent = "\u2699";
   gear.title = getString("settings-title");
   send.textContent = state.busy
     ? getString("panel-stop")
@@ -394,11 +390,11 @@ export const ChatPanel = {
       bodyXHTML: BODY_XHTML,
       header: {
         l10nID: getLocaleID("panel-title"),
-        icon: `chrome://${REF}/content/icons/favicon.png`,
+        icon: `chrome://${REF}/content/icons/icon16.png`,
       },
       sidenav: {
         l10nID: getLocaleID("panel-sidenav"),
-        icon: `chrome://${REF}/content/icons/favicon.png`,
+        icon: `chrome://${REF}/content/icons/icon20.png`,
       },
       onInit() {
         bump("panelInitCount");
