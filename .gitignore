@@ -5,3 +5,5 @@ zotero-cmd.json
 README.md
 .env
 **/test
+# Local dev Zotero profile (runtime smoke tests)
+profiles/
