@@ -6,11 +6,17 @@ import {
   chatEndpoint,
   configError,
   deltaFromSSELine,
+  embedConfigError,
+  embedEndpoint,
+  embedTexts,
   getConfig,
+  getEmbedConfig,
+  listEmbedModels,
   listModels,
   modelsEndpoint,
   normalizeBaseUrl,
   setConfig,
+  setEmbedConfig,
   streamChat,
 } from "./provider";
 
@@ -28,7 +34,15 @@ const state: {
   busy: boolean;
   itemID: number | null;
   activeStream: ChatStream | null;
-} = { messages: [], pending: "", busy: false, itemID: null, activeStream: null };
+  settingsOpen: boolean;
+} = {
+  messages: [],
+  pending: "",
+  busy: false,
+  itemID: null,
+  activeStream: null,
+  settingsOpen: true,
+};
 
 function bump(key: string) {
   try {
@@ -40,51 +54,94 @@ function bump(key: string) {
 }
 
 const PANEL_CSS = `
-.${REF}-panel{display:flex;flex-direction:column;gap:8px;padding:6px;font-size:13px;}
+.${REF}-panel{display:flex;flex-direction:column;gap:8px;padding:8px;font-size:13px;min-width:0;}
+.${REF}-topbar{display:flex;flex-direction:column;gap:4px;}
+.${REF}-s-toggle{align-self:flex-start;border:1px solid #c9c9c9;border-radius:6px;background:#f7f7f7;color:#333;padding:3px 10px;cursor:pointer;font:inherit;}
+.${REF}-s-toggle:hover{background:#ececec;}
+.${REF}-hint{color:#9a6700;background:#fff8c5;border:1px solid #e0c366;border-radius:6px;padding:4px 8px;font-size:12px;}
+.${REF}-hint[hidden]{display:none;}
+.${REF}-settings{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
+.${REF}-settings[hidden]{display:none;}
+.${REF}-group{display:flex;flex-direction:column;gap:5px;border-top:1px solid #ececec;padding-top:6px;}
+.${REF}-group:first-of-type{border-top:none;padding-top:0;}
+.${REF}-group-title{font-weight:600;color:#333;margin-bottom:2px;}
+.${REF}-field{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#444;}
+.${REF}-field>span{color:#555;}
+.${REF}-settings input[type=text],.${REF}-settings input[type=password],.${REF}-settings input:not([type]),.${REF}-settings select,.${REF}-settings input[type=number]{border:1px solid #c9c9c9;border-radius:6px;padding:4px 6px;font:inherit;background:#fff;color:#222;}
+.${REF}-row-inline{display:flex;gap:6px;align-items:center;}
+.${REF}-row-inline .${REF}-s-model,.${REF}-row-inline .${REF}-e-model{flex:1;}
+.${REF}-btn{border:1px solid #c9c9c9;border-radius:6px;padding:4px 10px;background:#fff;color:#333;cursor:pointer;font:inherit;white-space:nowrap;}
+.${REF}-btn:hover{background:#f0f0f0;}
+.${REF}-btn[disabled]{opacity:.55;cursor:default;}
+.${REF}-s-save{border:none;border-radius:6px;padding:5px 16px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;align-self:flex-end;}
+.${REF}-settings-actions{display:flex;justify-content:flex-end;gap:6px;}
+.${REF}-e-status{font-size:12px;color:#333;min-height:16px;}
+.${REF}-e-status.ok{color:#1a7f37;}
+.${REF}-e-status.err{color:#cf222e;}
 .${REF}-messages{display:flex;flex-direction:column;gap:6px;min-height:110px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:6px;}
 .${REF}-msg{padding:6px 8px;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;line-height:1.4;}
 .${REF}-msg.user{align-self:flex-end;background:#e8f3ff;color:#0a2540;max-width:85%;}
 .${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:95%;}
 .${REF}-empty{color:#888;font-style:italic;padding:8px 4px;}
-.${REF}-hint{color:#9a6700;background:#fff8c5;border:1px solid #e0c366;border-radius:6px;padding:4px 8px;font-size:12px;}
-.${REF}-hint[hidden]{display:none;}
-.${REF}-settings{display:flex;flex-direction:column;gap:6px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
-.${REF}-settings[hidden]{display:none;}
-.${REF}-field{display:flex;flex-direction:column;gap:2px;font-size:12px;color:#444;}
-.${REF}-model-row{display:flex;gap:6px;}
-.${REF}-model-row .${REF}-s-model{flex:1;}
-.${REF}-settings input{border:1px solid #d4d4d4;border-radius:6px;padding:4px 6px;font:inherit;}
-.${REF}-settings-actions{display:flex;justify-content:flex-end;}
-.${REF}-s-save{border:none;border-radius:6px;padding:4px 12px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
-.${REF}-s-refresh{border:1px solid #d4d4d4;border-radius:6px;padding:4px 8px;background:#fff;cursor:pointer;font:inherit;white-space:nowrap;}
 .${REF}-input-row{display:flex;gap:6px;align-items:flex-end;}
-.${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;font:inherit;}
-.${REF}-send{border:none;border-radius:6px;padding:6px 14px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
-.${REF}-gear{width:30px;height:30px;flex:0 0 auto;border:1px solid #d4d4d8;border-radius:6px;background:#fff url("chrome://${REF}/content/icons/gear.svg") center/16px 16px no-repeat;cursor:pointer;}
-
+.${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #c9c9c9;border-radius:6px;padding:6px 8px;font:inherit;}
+.${REF}-send{border:none;border-radius:6px;padding:8px 16px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
+.${REF}-send[disabled]{opacity:.5;cursor:default;}
 `;
 
 const BODY_XHTML = `
 <html:div class="${REF}-panel">
-  <html:div class="${REF}-messages"></html:div>
-  <html:div class="${REF}-hint" hidden="hidden"></html:div>
+  <html:div class="${REF}-topbar">
+    <html:button class="${REF}-s-toggle" type="button"></html:button>
+    <html:div class="${REF}-hint" hidden="hidden"></html:div>
+  </html:div>
   <html:div class="${REF}-settings" hidden="hidden">
-    <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-api"></html:span><html:input class="${REF}-s-api" type="text" /></html:label>
-    <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-key"></html:span><html:input class="${REF}-s-key" type="password" /></html:label>
-    <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-model"></html:span>
-      <html:span class="${REF}-model-row">
-        <html:input class="${REF}-s-model" type="text" list="${REF}-models" />
-        <html:button class="${REF}-s-refresh" type="button"></html:button>
-      </html:span>
-    </html:label>
-    <html:datalist id="${REF}-models"></html:datalist>
-    <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-temp"></html:span><html:input class="${REF}-s-temp" type="number" step="0.1" min="0" max="2" /></html:label>
+    <html:div class="${REF}-group">
+      <html:div class="${REF}-group-title ${REF}-lbl-chat"></html:div>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-api"></html:span><html:input class="${REF}-s-api" type="text" /></html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-key"></html:span><html:input class="${REF}-s-key" type="password" /></html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-model"></html:span>
+        <html:span class="${REF}-row-inline">
+          <html:input class="${REF}-s-model" type="text" list="${REF}-models" />
+          <html:button class="${REF}-btn ${REF}-s-refresh" type="button"></html:button>
+        </html:span>
+      </html:label>
+      <html:datalist id="${REF}-models"></html:datalist>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-temp"></html:span><html:input class="${REF}-s-temp" type="number" step="0.1" min="0" max="2" /></html:label>
+    </html:div>
+    <html:div class="${REF}-group">
+      <html:div class="${REF}-group-title ${REF}-lbl-embed"></html:div>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-embed-enabled"></html:span>
+        <html:span class="${REF}-row-inline"><html:input class="${REF}-e-enabled" type="checkbox" /></html:span>
+      </html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-embed-api"></html:span><html:input class="${REF}-e-api" type="text" /></html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-embed-key"></html:span><html:input class="${REF}-e-key" type="password" /></html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-embed-model"></html:span>
+        <html:span class="${REF}-row-inline">
+          <html:input class="${REF}-e-model" type="text" list="${REF}-embed-models" />
+          <html:button class="${REF}-btn ${REF}-e-refresh" type="button"></html:button>
+        </html:span>
+      </html:label>
+      <html:datalist id="${REF}-embed-models"></html:datalist>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-embed-type"></html:span>
+        <html:select class="${REF}-e-type">
+          <html:option value="openai">openai</html:option>
+          <html:option value="ollama-native">ollama-native</html:option>
+          <html:option value="tei">tei</html:option>
+        </html:select>
+      </html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-embed-dim"></html:span><html:input class="${REF}-e-dim" type="number" step="1" min="0" /></html:label>
+      <html:div class="${REF}-row-inline">
+        <html:button class="${REF}-btn ${REF}-e-test" type="button"></html:button>
+        <html:span class="${REF}-e-status"></html:span>
+      </html:div>
+    </html:div>
     <html:div class="${REF}-settings-actions"><html:button class="${REF}-s-save" type="button"></html:button></html:div>
   </html:div>
+  <html:div class="${REF}-messages"></html:div>
   <html:div class="${REF}-input-row">
     <html:textarea class="${REF}-input" rows="2"></html:textarea>
     <html:button class="${REF}-send" type="button"></html:button>
-    <html:button class="${REF}-gear" type="button"></html:button>
   </html:div>
 </html:div>`;
 
@@ -188,18 +245,29 @@ function wire(body: HTMLElement) {
   const panel = q(body, `.${REF}-panel`);
   if (!panel) return;
 
+  const toggle = q(body, `.${REF}-s-toggle`) as HTMLButtonElement;
   const hint = q(body, `.${REF}-hint`) as HTMLElement;
   const settings = q(body, `.${REF}-settings`) as HTMLElement;
+  const messagesEl = q(body, `.${REF}-messages`) as HTMLElement;
   const input = q(body, `.${REF}-input`) as HTMLTextAreaElement;
   const send = q(body, `.${REF}-send`) as HTMLButtonElement;
-  const gear = q(body, `.${REF}-gear`) as HTMLButtonElement;
   const sApi = q(body, `.${REF}-s-api`) as HTMLInputElement;
   const sKey = q(body, `.${REF}-s-key`) as HTMLInputElement;
   const sModel = q(body, `.${REF}-s-model`) as HTMLInputElement;
   const sTemp = q(body, `.${REF}-s-temp`) as HTMLInputElement;
   const sRefresh = q(body, `.${REF}-s-refresh`) as HTMLButtonElement;
   const sSave = q(body, `.${REF}-s-save`) as HTMLButtonElement;
-  const dataList = body.querySelector(`#${REF}-models`) as HTMLDataListElement | null;
+  const sModels = body.querySelector(`#${REF}-models`) as HTMLDataListElement | null;
+  const eEnabled = q(body, `.${REF}-e-enabled`) as HTMLInputElement;
+  const eApi = q(body, `.${REF}-e-api`) as HTMLInputElement;
+  const eKey = q(body, `.${REF}-e-key`) as HTMLInputElement;
+  const eModel = q(body, `.${REF}-e-model`) as HTMLInputElement;
+  const eType = q(body, `.${REF}-e-type`) as HTMLSelectElement;
+  const eDim = q(body, `.${REF}-e-dim`) as HTMLInputElement;
+  const eRefresh = q(body, `.${REF}-e-refresh`) as HTMLButtonElement;
+  const eTest = q(body, `.${REF}-e-test`) as HTMLButtonElement;
+  const eStatus = q(body, `.${REF}-e-status`) as HTMLElement;
+  const eModels = body.querySelector(`#${REF}-embed-models`) as HTMLDataListElement | null;
 
   const note = (text: string) => {
     state.messages.push({ role: "assistant", content: text });
@@ -207,13 +275,13 @@ function wire(body: HTMLElement) {
     syncMessages(body);
   };
 
-  const fillModels = (models: string[]) => {
-    if (!dataList) return;
-    dataList.textContent = "";
+  const fillList = (list: HTMLDataListElement | null, models: string[]) => {
+    if (!list) return;
+    list.textContent = "";
     for (const id of models) {
       const opt = doc.createElementNS(XHTML, "option");
       opt.setAttribute("value", id);
-      dataList.appendChild(opt);
+      list.appendChild(opt);
     }
   };
 
@@ -226,20 +294,38 @@ function wire(body: HTMLElement) {
     sApi.placeholder = "https://api.openai.com";
     sKey.placeholder = "sk-...";
     sModel.placeholder = "gpt-4o-mini";
+
+    const ecfg = getEmbedConfig();
+    eEnabled.checked = ecfg.enabled;
+    eApi.value = ecfg.api;
+    eKey.value = ecfg.secretKey;
+    eModel.value = ecfg.model;
+    eType.value = ecfg.providerType || "openai";
+    eDim.value = ecfg.dim;
+    eApi.placeholder = "https://api.openai.com";
+    eKey.placeholder = "sk-... (blank for local servers)";
+    eModel.placeholder = "text-embedding-3-small";
   };
 
   const refreshHint = () => {
     const cfg = getConfig();
+    const show = !cfg.secretKey.trim() && !state.settingsOpen;
     hint.textContent = getString("panel-hint-nokey");
-    hint.hidden = !!cfg.secretKey.trim();
+    hint.hidden = !show;
+  };
+
+  const syncToggle = () => {
+    toggle.textContent = getString(
+      state.settingsOpen ? "settings-close" : "settings-open",
+    );
+    settings.hidden = !state.settingsOpen;
   };
 
   // Localized labels (re-applied on every render; cheap).
-  input.setAttribute("placeholder", getString("panel-placeholder"));
-  gear.title = getString("settings-title");
-  send.textContent = state.busy
-    ? getString("panel-stop")
-    : getString("panel-send");
+  (q(body, `.${REF}-lbl-chat`) as HTMLElement).textContent =
+    getString("settings-chat-group");
+  (q(body, `.${REF}-lbl-embed`) as HTMLElement).textContent =
+    getString("settings-embed-group");
   (q(body, `.${REF}-lbl-api`) as HTMLElement).textContent =
     getString("settings-api");
   (q(body, `.${REF}-lbl-key`) as HTMLElement).textContent =
@@ -250,6 +336,24 @@ function wire(body: HTMLElement) {
     getString("settings-temperature");
   sRefresh.textContent = getString("settings-refresh");
   sSave.textContent = getString("settings-save");
+  (q(body, `.${REF}-lbl-embed-enabled`) as HTMLElement).textContent =
+    getString("settings-embed-enabled");
+  (q(body, `.${REF}-lbl-embed-api`) as HTMLElement).textContent =
+    getString("settings-embed-api");
+  (q(body, `.${REF}-lbl-embed-key`) as HTMLElement).textContent =
+    getString("settings-embed-key");
+  (q(body, `.${REF}-lbl-embed-model`) as HTMLElement).textContent =
+    getString("settings-embed-model");
+  (q(body, `.${REF}-lbl-embed-type`) as HTMLElement).textContent =
+    getString("settings-embed-type");
+  (q(body, `.${REF}-lbl-embed-dim`) as HTMLElement).textContent =
+    getString("settings-embed-dim");
+  eRefresh.textContent = getString("settings-refresh");
+  eTest.textContent = getString("settings-embed-test");
+  input.setAttribute("placeholder", getString("panel-placeholder"));
+  send.textContent = state.busy ? getString("panel-stop") : getString("panel-send");
+
+  syncToggle();
   populateSettings();
   refreshHint();
   syncMessages(body);
@@ -293,9 +397,10 @@ function wire(body: HTMLElement) {
     const cfg = getConfig();
     const problem = configError(cfg);
     if (problem) {
-      note(problem);
-      settings.hidden = false;
+      state.settingsOpen = true;
+      syncToggle();
       populateSettings();
+      note(problem);
       return;
     }
 
@@ -334,20 +439,43 @@ function wire(body: HTMLElement) {
     }
   };
 
-  send.addEventListener("click", () => {
-    if (state.busy) state.activeStream?.cancel();
-    else void onSend();
-  });
-  gear.addEventListener("click", () => {
-    settings.hidden = !settings.hidden;
-    if (!settings.hidden) populateSettings();
+  toggle.addEventListener("click", () => {
+    state.settingsOpen = !state.settingsOpen;
+    syncToggle();
+    populateSettings();
+    refreshHint();
+    if (state.settingsOpen) settings.scrollIntoView({ block: "nearest" });
   });
   sRefresh.addEventListener("click", async () => {
     sRefresh.disabled = true;
     try {
-      fillModels(await listModels());
+      fillList(sModels, await listModels());
     } finally {
       sRefresh.disabled = false;
+    }
+  });
+  eRefresh.addEventListener("click", async () => {
+    eRefresh.disabled = true;
+    try {
+      fillList(eModels, await listEmbedModels());
+    } finally {
+      eRefresh.disabled = false;
+    }
+  });
+  eTest.addEventListener("click", async () => {
+    eStatus.textContent = "";
+    eStatus.className = `${REF}-e-status`;
+    eTest.disabled = true;
+    try {
+      const vectors = await embedTexts(["connection test"]);
+      const dim = vectors[0]?.length ?? 0;
+      eStatus.textContent = getString("settings-embed-ok") + ` (${dim})`;
+      eStatus.classList.add("ok");
+    } catch (e: any) {
+      eStatus.textContent = `\u26a0 ${e?.message || e}`;
+      eStatus.classList.add("err");
+    } finally {
+      eTest.disabled = false;
     }
   });
   sSave.addEventListener("click", () => {
@@ -357,9 +485,22 @@ function wire(body: HTMLElement) {
       model: sModel.value.trim(),
       temperature: Number(sTemp.value) || 1,
     });
-    settings.hidden = true;
+    setEmbedConfig({
+      enabled: eEnabled.checked,
+      api: eApi.value.trim(),
+      secretKey: eKey.value.trim(),
+      model: eModel.value.trim(),
+      providerType: eType.value || "openai",
+      dim: eDim.value.trim(),
+    });
+    state.settingsOpen = false;
+    syncToggle();
     refreshHint();
     note(getString("settings-saved"));
+  });
+  send.addEventListener("click", () => {
+    if (state.busy) state.activeStream?.cancel();
+    else void onSend();
   });
   input.addEventListener("keydown", (e: KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -368,7 +509,7 @@ function wire(body: HTMLElement) {
       else void onSend();
     }
   });
-
+  void messagesEl;
 }
 
 export const ChatPanel = {
@@ -428,6 +569,12 @@ export const ChatPanel = {
           configError,
           listModels,
           streamChat,
+          getEmbedConfig,
+          setEmbedConfig,
+          embedConfigError,
+          embedEndpoint,
+          embedTexts,
+          listEmbedModels,
         };
       }
     } catch {}

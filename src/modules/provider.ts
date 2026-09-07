@@ -242,3 +242,145 @@ export async function listModels(): Promise<string[]> {
     return [];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Embeddings (OpenAI-compatible, e.g. OpenAI / Ollama / LM Studio / TEI)
+// ---------------------------------------------------------------------------
+
+export interface EmbedConfig {
+  enabled: boolean;
+  api: string;
+  secretKey: string;
+  model: string;
+  providerType: string;
+  dim: string;
+}
+
+export function getEmbedConfig(): EmbedConfig {
+  return {
+    enabled: Boolean(getPref("embedEnabled", true)),
+    api: String(getPref("embedApi", "") ?? ""),
+    secretKey: String(getPref("embedSecretKey", "") ?? ""),
+    model: String(getPref("embedModel", "text-embedding-3-small") ?? ""),
+    providerType: String(getPref("embedProviderType", "openai") ?? ""),
+    dim: String(getPref("embedDim", "") ?? ""),
+  };
+}
+
+export function setEmbedConfig(patch: Partial<EmbedConfig>): void {
+  const entries: Array<[string, unknown]> = [
+    ["embedEnabled", patch.enabled],
+    ["embedApi", patch.api],
+    ["embedSecretKey", patch.secretKey],
+    ["embedModel", patch.model],
+    ["embedProviderType", patch.providerType],
+    ["embedDim", patch.dim],
+  ];
+  for (const [name, value] of entries) {
+    if (value === undefined || value === null) continue;
+    Zotero.Prefs.set(prefKey(name), value as string | number | boolean);
+  }
+}
+
+export const embedEndpoint = (base: string) =>
+  `${normalizeBaseUrl(base)}/v1/embeddings`;
+
+export function embedConfigError(cfg: EmbedConfig): string | null {
+  if (!cfg.enabled) return "Embeddings are disabled.";
+  if (!cfg.api.trim()) return "Embedding API base URL is not set.";
+  if (!cfg.model.trim()) return "Embedding model is not set.";
+  return null;
+}
+
+/**
+ * Embed a list of texts with an OpenAI-compatible `/v1/embeddings` endpoint.
+ * The `Authorization` header is omitted when the key is blank (local servers).
+ * Returns one vector per input text.
+ */
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  const cfg = getEmbedConfig();
+  const problem = embedConfigError(cfg);
+  if (problem) throw new Error(problem);
+  if (!texts.length) return [];
+
+  const url = embedEndpoint(cfg.api);
+  const body: Record<string, unknown> = {
+    model: cfg.model,
+    input: texts,
+  };
+  const dim = Number(cfg.dim);
+  if (Number.isFinite(dim) && dim > 0) {
+    body.dimensions = dim;
+  }
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.secretKey.trim()) {
+    headers["Authorization"] = `Bearer ${cfg.secretKey.trim()}`;
+  }
+
+  try {
+    const res: any = await (Zotero as any).HTTP.request("POST", url, {
+      headers,
+      body: JSON.stringify(body),
+      responseType: "json",
+      timeout: 120000,
+    });
+    const payload = res?.response ?? res;
+    const status = res?.status ?? 200;
+    if (status >= 400) {
+      throw new Error(extractError(payload, status, url));
+    }
+    const data = payload?.data;
+    if (!Array.isArray(data)) {
+      throw new Error(`Unexpected embeddings response from ${url}`);
+    }
+    const vectors = data.map((d: any) => d?.embedding);
+    if (!vectors.every((v: any) => Array.isArray(v))) {
+      throw new Error(`Unexpected embeddings response from ${url}`);
+    }
+    const dims = (vectors as any[][]).map((v) => v.length);
+    if (new Set(dims).size > 1) {
+      throw new Error(
+        `Embedding dimension mismatch: ${Array.from(new Set(dims)).join(", ")}`,
+      );
+    }
+    if (Number.isFinite(dim) && dim > 0 && dims[0] !== dim) {
+      throw new Error(
+        `Embedding returned ${dims[0]} dims, expected ${dim} (model "${cfg.model}").`,
+      );
+    }
+    return vectors as number[][];
+  } catch (e: any) {
+    if (e instanceof Error) throw e;
+    throw new Error(extractError(e?.response ?? e?.xmlhttp?.response, e?.status, url));
+  }
+}
+
+/** Discover embedding models via GET {embedApi}/v1/models (fail-soft). */
+export async function listEmbedModels(): Promise<string[]> {
+  const cfg = getEmbedConfig();
+  if (!cfg.enabled || !cfg.api.trim()) return [];
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (cfg.secretKey.trim()) {
+      headers["Authorization"] = `Bearer ${cfg.secretKey.trim()}`;
+    }
+    const res: any = await (Zotero as any).HTTP.request(
+      "GET",
+      modelsEndpoint(cfg.api),
+      { headers, responseType: "json", timeout: 10000 },
+    );
+    const payload = res?.response ?? res;
+    const data = payload?.data ?? payload;
+    if (Array.isArray(data)) {
+      return data
+        .map((m: any) => (typeof m === "string" ? m : m?.id))
+        .filter((id: unknown) => typeof id === "string" && id.length > 0)
+        .sort() as string[];
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}

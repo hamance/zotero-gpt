@@ -4,7 +4,7 @@ Zotero GPT is a Zotero 7–10 add-on (TypeScript/ESM, `zotero-plugin-scaffold` +
 
 ## Project Structure & Module Organization
 
-- `src/` — TypeScript source: `index.ts` (entry), `addon.ts` (singleton), `hooks.ts` (lifecycle), `modules/panel.ts` (docked item-pane section + settings UI), `modules/provider.ts` (OpenAI-compatible chat provider), `utils/` (`locale.ts`, `ztoolkit.ts`).
+- `src/` — TypeScript source: `index.ts` (entry), `addon.ts` (singleton), `hooks.ts` (lifecycle), `modules/panel.ts` (docked item-pane section + settings UI), `modules/provider.ts` (OpenAI-compatible chat + embedding providers), `utils/` (`locale.ts`, `ztoolkit.ts`).
 - `addon/` — scaffold assets: `bootstrap.js`, `manifest.json`, `prefs.js`, `content/` (icons, `md.css`), `locale/{en-US,zh-CN}/addon.ftl`.
 - `test/` — mocha tests that run inside Zotero.
 - `legacy/` (plus `tags/`, `imgs/`) — pre-migration code kept for reference; excluded from the build.

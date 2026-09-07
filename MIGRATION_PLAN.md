@@ -12,7 +12,7 @@
 | 1 | Modern scaffold: `zotero-plugin-scaffold` CLI, toolkit 5.x / zotero-types 4.x, ESM bootstrap, drop Z6, `strict_min 7.0` / `strict_max 10.0.*`, FTL locale | **Done** (boots + passes on FF140 Zotero) |
 | 2 | Docked side panel: register `Zotero.Reader.registerReaderTabPanel(...)` (reader) and/or `Zotero.ItemPaneManager.registerSection(...)` (item pane); port chat UI from the floating `position:fixed` overlay; delete drag/zoom/position + reader-`eval`/`.selection-popup` hacks; floating `position:fixed` overlay removed | **Done** (docked item-pane/reader section via `ItemPaneManager.registerSection`; 7/7 tests) |
 | 3a | OpenAI-compatible **chat** provider: `streamChat` POST `{api}/v1/chat/completions` (Bearer, SSE), URL normalization, model auto-discovery (fail-soft), no dead fallbacks (removed aigpt.one/theb.ai), settings form + `/api` `/model` `/key` `/clear` in the docked panel | **Done** (16/16 tests) |
-| 3b | **Independent embedding provider** (own URL/key/model, local-model support incl. Ollama/LM Studio), vector-cache correctness fixes (cache key incl. model identity, dimension checks), settings UI embeddings section | **Deferred** — not required for the core GPT chat use-case; tracked in Stage 3 detail below |
+| 3b | **Embedding provider**: OpenAI-compatible `/v1/embeddings` (own URL/key/model/type/dim), keyless local support, fail-soft model discovery, settings UI (enabled + test connection) | **Done** (config + provider + tests 23/23). Remaining: ollama-native/tei response shapes, wiring into RAG (AskPDF), vector-cache identity fixes |
 
 ## Key facts gathered
 - UI today = `position:fixed` draggable div (`src/modules/views.ts`, ~1.4k lines), rebuilt on each `Ctrl+/`.
@@ -125,3 +125,14 @@ Embeddings may live on a different host, use a different model/key, or run **loc
   - Made the empty state visually read as a chat box: `.zoterogpt-messages` now has a white background + 1px border + radius; `.zoterogpt-empty` gets padding.
 - Gates: `npm run build` green; `npm test` → **17 passed**.
 - Note: a real screenshot could not be captured — the scaffold test instance opens Zotero with a hidden window (no HWND), so visual confirmation is still manual via the xpi.
+
+### Stage 3b — Embedding provider config + redesigned settings UI (2026-09-08)
+- **Why:** user reported the gear icon was still invisible and asked how to configure embeddings.
+- Settings UI reworked (panel.ts): the icon-only gear was replaced by a **labeled text button** (`设置 / Settings`, FTL `settings-open`/`settings-close`) that renders without font glyphs or background-image support; the settings panel sits at the top of the chat section and **opens by default on first run** (chat config missing or never saved).
+- New **Embeddings** group in settings: enable checkbox, API base URL, key (blank = no auth for local servers), model (datalist + refresh from `GET {embedApi}/v1/models`), provider type (`openai` implemented; `ollama-native`/`tei` reserved), optional dimensions, and a **Test connection** button that runs a probe embedding and reports the returned vector dimension.
+- New prefs (`addon/prefs.js`): `embedEnabled` (true), `embedApi` (""), `embedSecretKey` (""), `embedModel` ("text-embedding-3-small"), `embedProviderType` ("openai"), `embedDim` ("").
+- provider.ts: `getEmbedConfig`/`setEmbedConfig`, `embedEndpoint`, `embedConfigError`, `embedTexts()` (POST `{embedApi}/v1/embeddings`, Bearer only when key set, optional `dimensions`, validates uniform/dim-consistent vectors), `listEmbedModels()` (fail-soft); all exposed on `addon.api.provider`.
+- FTL keys added (en-US + zh-CN): `settings-open/-close/-chat-group/-embed-group/-embed-enabled/-embed-api/-embed-key/-embed-model/-embed-type/-embed-dim/-embed-test/-embed-ok`; chat labels clarified (key may be blank for local servers).
+- Debug note: an early embedding test hung (mock HTTP misuse) and another failed from cross-test pref leakage (`embedDim` 768 not reset) — isolated with a temporary checkpoint test, fixed by resetting `dim` per test and using simpler mocks; checkpoint removed.
+- Gates: `npm run build` green; `npm test` → **23 passed** (startup 4 + docked panel 6 + chat provider 8 + embedding provider 5).
+- Remaining: `ollama-native`/`tei` response shapes, and wiring embeddings into a real retrieval/RAG flow (e.g. AskPDF), are still TODO; the provider + config surface is ready.

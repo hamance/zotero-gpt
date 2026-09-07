@@ -171,3 +171,167 @@ describe("chat provider", function () {
     assert.match(threw, /model/i);
   });
 });
+
+describe("embedding provider", function () {
+  this.timeout(20000);
+  const api = () => (Zotero as any)[config.addonInstance].api as any;
+  const provider = () => api().provider;
+  let origRequest: any = null;
+  let savedEmbed: any;
+
+  before(() => {
+    const e = provider().getEmbedConfig();
+    savedEmbed = {
+      enabled: e.enabled,
+      api: e.api,
+      secretKey: e.secretKey,
+      model: e.model,
+      providerType: e.providerType,
+      dim: e.dim,
+    };
+  });
+
+  afterEach(() => {
+    if (origRequest) {
+      (Zotero as any).HTTP.request = origRequest;
+      origRequest = null;
+    }
+  });
+
+  after(() => {
+    provider().setEmbedConfig(savedEmbed);
+  });
+
+  // Resolve only when the mock answers; otherwise fail loudly instead of hanging.
+  function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    return Promise.race([
+      p,
+      Zotero.Promise.delay(ms).then(() => {
+        throw new Error("TIMEOUT in " + label);
+      }),
+    ]);
+  }
+
+  function mockEmbedApi(vectors: number[][]) {
+    origRequest = (Zotero as any).HTTP.request;
+    (Zotero as any).HTTP.request = async (method: string, _url: string, opts: any) => {
+      if (method === "GET") {
+        return { status: 200, response: { data: [{ id: "emb-a" }, { id: "emb-b" }] } };
+      }
+      return {
+        status: 200,
+        response: { data: vectors.map((embedding) => ({ embedding })) },
+      };
+    };
+  }
+
+  it("round-trips embedding config and derives the embeddings endpoint", () => {
+    const p = provider();
+    p.setEmbedConfig({
+      enabled: true,
+      api: "http://localhost:11434/v1/",
+      secretKey: "",
+      model: "nomic-embed-text",
+      providerType: "openai",
+      dim: "768",
+    });
+    const e = p.getEmbedConfig();
+    assert.equal(e.api, "http://localhost:11434/v1/");
+    assert.equal(e.model, "nomic-embed-text");
+    assert.equal(p.embedEndpoint("http://localhost:11434/v1/"), "http://localhost:11434/v1/embeddings");
+    assert.isNull(p.embedConfigError(e));
+  });
+
+  it("embeds texts without an Authorization header for keyless local servers", async function () {
+    const p = provider();
+    p.setEmbedConfig({ api: "http://localhost:11434", secretKey: "", model: "nomic", dim: "" });
+    let captured: any = {};
+    origRequest = (Zotero as any).HTTP.request;
+    (Zotero as any).HTTP.request = async (method: string, url: string, opts: any) => {
+      captured = { method, url, opts };
+      return {
+        status: 200,
+        response: {
+          data: [{ embedding: [0.1, 0.2] }, { embedding: [0.3, 0.4] }],
+        },
+      };
+    };
+    const vectors = await withTimeout(
+      p.embedTexts(["alpha", "beta"]),
+      6000,
+      "embedTexts noauth",
+    );
+    assert.deepEqual(vectors, [[0.1, 0.2], [0.3, 0.4]]);
+    assert.equal(captured.method, "POST");
+    assert.equal(captured.url, "http://localhost:11434/v1/embeddings");
+    assert.isUndefined(captured.opts.headers.Authorization);
+    const body = JSON.parse(captured.opts.body);
+    assert.equal(body.model, "nomic");
+    assert.deepEqual(body.input, ["alpha", "beta"]);
+    assert.isUndefined(body.dimensions);
+  });
+
+  it("sends Bearer auth and requested dimensions when configured", async function () {
+    const p = provider();
+    p.setEmbedConfig({
+      api: "https://api.openai.com/v1",
+      secretKey: "sk-x",
+      model: "text-embedding-3-small",
+      dim: "1536",
+    });
+    let captured: any = {};
+    origRequest = (Zotero as any).HTTP.request;
+    (Zotero as any).HTTP.request = async (method: string, url: string, opts: any) => {
+      captured = { method, url, opts };
+      return { status: 200, response: { data: [{ embedding: new Array(1536).fill(0.5) }] } };
+    };
+    const vectors = await withTimeout(
+      p.embedTexts(["hi"]),
+      6000,
+      "embedTexts bearer",
+    );
+    assert.equal(vectors.length, 1);
+    assert.equal(captured.opts.headers.Authorization, "Bearer sk-x");
+    const body = JSON.parse(captured.opts.body);
+    assert.equal(body.dimensions, 1536);
+
+  });
+
+  it("rejects when embeddings are disabled or the model is missing", async function () {
+    const p = provider();
+    p.setEmbedConfig({ enabled: false, dim: "" });
+    let threw = "";
+    try {
+      await p.embedTexts(["x"]);
+    } catch (e: any) {
+      threw = e?.message || String(e);
+    }
+    assert.match(threw, /disabled/i);
+
+    p.setEmbedConfig({ enabled: true, api: "http://x", model: "", dim: "" });
+    threw = "";
+    try {
+      await p.embedTexts(["x"]);
+    } catch (e: any) {
+      threw = e?.message || String(e);
+    }
+    assert.match(threw, /model/i);
+  });
+
+  it("discovers embedding models and fails soft when unreachable", async function () {
+    const p = provider();
+    p.setEmbedConfig({ enabled: true, api: "http://127.0.0.1:9", secretKey: "", model: "m", dim: "" });
+    origRequest = (Zotero as any).HTTP.request;
+    (Zotero as any).HTTP.request = async () => {
+      throw new Error("connection refused (mock)");
+    };
+    const models = await withTimeout(p.listEmbedModels(), 6000, "listEmbedModels");
+    assert.deepEqual(models, []);
+
+    p.setEmbedConfig({ enabled: false, dim: "" });
+    const models2 = await withTimeout(p.listEmbedModels(), 6000, "listEmbedModels disabled");
+    assert.deepEqual(models2, []);
+
+  });
+
+});
