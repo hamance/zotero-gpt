@@ -136,3 +136,11 @@ Embeddings may live on a different host, use a different model/key, or run **loc
 - Debug note: an early embedding test hung (mock HTTP misuse) and another failed from cross-test pref leakage (`embedDim` 768 not reset) — isolated with a temporary checkpoint test, fixed by resetting `dim` per test and using simpler mocks; checkpoint removed.
 - Gates: `npm run build` green; `npm test` → **23 passed** (startup 4 + docked panel 6 + chat provider 8 + embedding provider 5).
 - Remaining: `ollama-native`/`tei` response shapes, and wiring embeddings into a real retrieval/RAG flow (e.g. AskPDF), are still TODO; the provider + config surface is ready.
+
+### Stage 4 — Chat log: export to Markdown + save as Zotero note (2026-09-08)
+- **Ask:** persist the whole Zotero GPT conversation to a .md file and organize it into a note.
+- New `src/modules/chatlog.ts`: `buildMarkdown` (transcript w/ headers, date, item title; system context excluded), `buildNoteHTML` (escaped HTML note body), `chatsDir()` (Zotero data dir + `/Zotero GPT`), `exportToMd()` (timestamped `Zotero-GPT-YYYYMMDD-HHmmss.md`, creates folder, platform-native path), `saveAsNote()` (creates a `note` item attached to the discussed item or standalone). Exposed as `addon.api.chatlog`.
+- Panel: two labeled buttons under the conversation — `导出对话 (.md)` and `保存为笔记` — disabled until there is a conversation; success/error reported inline in the chat.
+- Locale keys (en-US/zh-CN): `action-export`, `action-note`, `action-empty`, `action-exported`, `action-note-done`.
+- Debug note: `Zotero.File.pathToFile` rejects mixed `/`+`\` Windows paths, so `exportToMd` converts to platform-native separators before calling File APIs and returns the native path.
+- Gates: `npm run build` green; `npm test` → **28 passed** (adds 5 chat-log tests: markdown, HTML escaping, real file export under the Zotero data dir, child-note creation, UI button enable/disable).

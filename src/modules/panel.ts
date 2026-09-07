@@ -19,6 +19,13 @@ import {
   setEmbedConfig,
   streamChat,
 } from "./provider";
+import {
+  buildMarkdown,
+  buildNoteHTML,
+  chatsDir,
+  exportToMd,
+  saveAsNote,
+} from "./chatlog";
 
 const REF = config.addonRef;
 const PANE_ID = `${REF}-chat`;
@@ -84,6 +91,7 @@ const PANEL_CSS = `
 .${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:95%;}
 .${REF}-empty{color:#888;font-style:italic;padding:8px 4px;}
 .${REF}-input-row{display:flex;gap:6px;align-items:flex-end;}
+.${REF}-actions{display:flex;gap:6px;flex-wrap:wrap;}
 .${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #c9c9c9;border-radius:6px;padding:6px 8px;font:inherit;}
 .${REF}-send{border:none;border-radius:6px;padding:8px 16px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
 .${REF}-send[disabled]{opacity:.5;cursor:default;}
@@ -139,6 +147,10 @@ const BODY_XHTML = `
     <html:div class="${REF}-settings-actions"><html:button class="${REF}-s-save" type="button"></html:button></html:div>
   </html:div>
   <html:div class="${REF}-messages"></html:div>
+  <html:div class="${REF}-actions">
+    <html:button class="${REF}-btn ${REF}-a-export" type="button"></html:button>
+    <html:button class="${REF}-btn ${REF}-a-note" type="button"></html:button>
+  </html:div>
   <html:div class="${REF}-input-row">
     <html:textarea class="${REF}-input" rows="2"></html:textarea>
     <html:button class="${REF}-send" type="button"></html:button>
@@ -268,11 +280,33 @@ function wire(body: HTMLElement) {
   const eTest = q(body, `.${REF}-e-test`) as HTMLButtonElement;
   const eStatus = q(body, `.${REF}-e-status`) as HTMLElement;
   const eModels = body.querySelector(`#${REF}-embed-models`) as HTMLDataListElement | null;
+  const aExport = q(body, `.${REF}-a-export`) as HTMLButtonElement;
+  const aNote = q(body, `.${REF}-a-note`) as HTMLButtonElement;
+
+  const getItemTitle = (): string => {
+    try {
+      const item = state.itemID
+        ? (Zotero as any).Items?.get?.(state.itemID)
+        : null;
+      return item && typeof item.isItem === "function" && item.isItem()
+        ? String(item.getField?.("title") || "")
+        : "";
+    } catch {
+      return "";
+    }
+  };
+
+  const refreshActions = () => {
+    const has = state.messages.length > 0;
+    aExport.disabled = !has;
+    aNote.disabled = !has;
+  };
 
   const note = (text: string) => {
     state.messages.push({ role: "assistant", content: text });
     state.pending = "";
     syncMessages(body);
+    refreshActions();
   };
 
   const fillList = (list: HTMLDataListElement | null, models: string[]) => {
@@ -350,6 +384,8 @@ function wire(body: HTMLElement) {
     getString("settings-embed-dim");
   eRefresh.textContent = getString("settings-refresh");
   eTest.textContent = getString("settings-embed-test");
+  aExport.textContent = getString("action-export");
+  aNote.textContent = getString("action-note");
   input.setAttribute("placeholder", getString("panel-placeholder"));
   send.textContent = state.busy ? getString("panel-stop") : getString("panel-send");
 
@@ -357,6 +393,7 @@ function wire(body: HTMLElement) {
   populateSettings();
   refreshHint();
   syncMessages(body);
+  refreshActions();
 
   if (panel.dataset.wired === "1") return;
   panel.dataset.wired = "1";
@@ -370,6 +407,7 @@ function wire(body: HTMLElement) {
         state.messages = [];
         state.pending = "";
         syncMessages(body);
+        refreshActions();
         return true;
       case "/api":
       case "/model":
@@ -435,6 +473,7 @@ function wire(body: HTMLElement) {
       state.activeStream = null;
       send.textContent = getString("panel-send");
       syncMessages(body);
+      refreshActions();
       input.focus();
     }
   };
@@ -497,6 +536,37 @@ function wire(body: HTMLElement) {
     syncToggle();
     refreshHint();
     note(getString("settings-saved"));
+  });
+  aExport.addEventListener("click", async () => {
+    if (!state.messages.length) {
+      note(getString("action-empty"));
+      return;
+    }
+    try {
+      const path = await exportToMd(state.messages, {
+        itemTitle: getItemTitle(),
+        itemID: state.itemID,
+      });
+      note(`${getString("action-exported")} ${path}`);
+    } catch (e: any) {
+      note(`\u26a0 ${e?.message || e}`);
+    }
+  });
+  aNote.addEventListener("click", async () => {
+    if (!state.messages.length) {
+      note(getString("action-empty"));
+      return;
+    }
+    try {
+      const id = await saveAsNote(
+        state.messages,
+        { itemTitle: getItemTitle(), itemID: state.itemID },
+        state.itemID,
+      );
+      note(`${getString("action-note-done")} ${id}`);
+    } catch (e: any) {
+      note(`\u26a0 ${e?.message || e}`);
+    }
   });
   send.addEventListener("click", () => {
     if (state.busy) state.activeStream?.cancel();
@@ -575,6 +645,13 @@ export const ChatPanel = {
           embedEndpoint,
           embedTexts,
           listEmbedModels,
+        };
+        inst.api.chatlog = {
+          buildMarkdown,
+          buildNoteHTML,
+          chatsDir,
+          exportToMd,
+          saveAsNote,
         };
       }
     } catch {}
