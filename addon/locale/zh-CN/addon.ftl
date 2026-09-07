@@ -1,8 +1,10 @@
 # Zotero GPT - 中文
 
 startup = Zotero GPT 已加载
-panel-title = Zotero GPT
-panel-sidenav = Zotero GPT 对话
+panel-title =
+    .label = Zotero GPT
+panel-sidenav =
+    .tooltiptext = Zotero GPT 对话
 panel-placeholder = 就所选条目提问…（命令：/clear、/api、/model、/key）
 panel-send = 发送
 panel-stop = 停止

@@ -61,6 +61,10 @@ const PANEL_CSS = `
 .${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #d4d4d8;border-radius:6px;padding:6px 8px;font:inherit;}
 .${REF}-send{border:none;border-radius:6px;padding:6px 14px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
 .${REF}-gear{border:1px solid #d4d4d8;border-radius:6px;padding:6px 10px;background:#fff;cursor:pointer;font-size:14px;line-height:1;}
+
+/* Fit our 32px png into Zotero item-pane icon slots (16px header, 20px sidenav). */
+item-pane-custom-section[data-pane*="zoterogpt-chat"] collapsible-section>.head .title::before{background-size:16px 16px;}
+item-pane-sidenav .btn[data-pane*="zoterogpt-chat"]{background-size:20px 20px;}
 `;
 
 const BODY_XHTML = `

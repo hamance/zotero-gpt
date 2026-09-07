@@ -150,6 +150,36 @@ describe("docked panel", function () {
     assert.includeMembers(values, ["model-a", "model-b"], "datalist populated from /v1/models");
   });
 
+  it("keeps the section header and injected body intact (l10n must not wipe DOM)", async function () {
+    const item = new Zotero.Item("journalArticle");
+    item.setField("title", "structure guard");
+    await item.saveTx();
+    await win.ZoteroPane.selectItem(item.id);
+    let section = doc.querySelector("item-pane-custom-section") as HTMLElement | null;
+    for (let i = 0; i < 20 && !section; i++) {
+      await Zotero.Promise.delay(300);
+      section = doc.querySelector("item-pane-custom-section") as HTMLElement | null;
+    }
+    assert.ok(section, "custom section registered and connected");
+    const collapsible = section!.querySelector("collapsible-section") as HTMLElement;
+    assert.ok(collapsible, "collapsible-section present");
+    // Header title comes from the .label attribute, not textContent, so the
+    // framework-injected head/body children survive Fluent translation.
+    assert.equal(collapsible.getAttribute("label"), "Zotero GPT");
+    assert.ok(collapsible.querySelector(".head"), "section head survives");
+    const body = section!.querySelector('[data-type="body"]') as HTMLElement | null;
+    assert.ok(body, "body container survives");
+    const panel = body?.querySelector(`.${cls}-panel`) as HTMLElement | null;
+    assert.ok(panel, "chat panel present inside body");
+    assert.equal(
+      doc.defaultView!.getComputedStyle(panel!).display,
+      "flex",
+      "panel styles are applied in the real document",
+    );
+    const rect = panel!.getBoundingClientRect();
+    assert.isAbove(rect.width, 0, "panel laid out with real width");
+    assert.isAbove(rect.height, 0, "panel laid out with real height");
+  });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);
   });

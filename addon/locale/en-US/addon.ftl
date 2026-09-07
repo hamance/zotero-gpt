@@ -1,8 +1,10 @@
 # Zotero GPT - English strings
 
 startup = Zotero GPT loaded
-panel-title = Zotero GPT
-panel-sidenav = Zotero GPT chat
+panel-title =
+    .label = Zotero GPT
+panel-sidenav =
+    .tooltiptext = Zotero GPT chat
 panel-placeholder = Ask about this item…  (commands: /clear, /api, /model, /key)
 panel-send = Send
 panel-stop = Stop
