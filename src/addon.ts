@@ -10,6 +10,7 @@ class Addon {
     env: "development" | "production";
     initialized?: boolean;
     ztoolkit: ZoteroToolkit;
+    locale?: { current: any };
   };
   public hooks: typeof hooks;
   public api: Record<string, unknown>;
@@ -28,4 +29,3 @@ class Addon {
 }
 
 export default Addon;
-

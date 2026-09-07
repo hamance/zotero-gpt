@@ -10,7 +10,7 @@
 |---|-------|--------|
 | 0 | Make the repo build again (remove external `../../validation/core` import + dead `zotero-adv-installer: file:..` dep); `npm install` + bundle + typecheck green | **Done** |
 | 1 | Modern scaffold: `zotero-plugin-scaffold` CLI, toolkit 5.x / zotero-types 4.x, ESM bootstrap, drop Z6, `strict_min 7.0` / `strict_max 10.0.*`, FTL locale | **Done** (boots + passes on FF140 Zotero) |
-| 2 | Docked side panel: register `Zotero.Reader.registerReaderTabPanel(...)` (reader) and/or `Zotero.ItemPaneManager.registerSection(...)` (item pane); port chat UI from the floating `position:fixed` overlay; delete drag/zoom/position + reader-`eval`/`.selection-popup` hacks | Planned |
+| 2 | Docked side panel: register `Zotero.Reader.registerReaderTabPanel(...)` (reader) and/or `Zotero.ItemPaneManager.registerSection(...)` (item pane); port chat UI from the floating `position:fixed` overlay; delete drag/zoom/position + reader-`eval`/`.selection-popup` hacks; floating `position:fixed` overlay removed | **Done** (docked item-pane/reader section via `ItemPaneManager.registerSection`; 7/7 tests) |
 | 3 | Custom providers: OpenAI-compatible **chat** provider with model auto-discovery; **independent embedding provider** (own URL/key/model, local-model support); vector-cache correctness fixes; real settings UI. Detail below. | Planned |
 
 ## Key facts gathered
@@ -84,3 +84,13 @@ Embeddings may live on a different host, use a different model/key, or run **loc
 - Stage 1 — modern scaffold migration; Z6 dropped; boots + harness tests pass on FF140 Zotero (see log).
 
 
+
+### Stage 2 — docked side panel (2026-09-08)
+- API probe on the installed FF140 Zotero: `Zotero.Reader.registerReaderTabPanel` is **undefined**; `Zotero.ItemPaneManager.registerSection` **is** available. Used the item-pane section (renders in the library right-hand pane **and** the reader, with a sidenav button).
+- New `src/modules/panel.ts` registers section `zoterogpt-chat` (pluginID `zoterogpt@polygon.org`). Section body is supplied as declarative **`bodyXHTML`** (the framework injects `<html:div data-type="body">` via `MozXULElement.parseXULToFragment`); dynamic DOM appended only in `onRender` does not persist, so all structural markup lives in `bodyXHTML` and CSS in a per-window `<style>`.
+- Conversation state held in a module-level `state` object so it survives section re-renders; CSS classes are `zoterogpt-`-prefixed. Open-state pref `panes.zoterogpt@polygon.org-zoterogpt-chat.open` is defaulted to `true` at register.
+- `src/modules/provider.ts` added with a `streamChat` stub (fake streaming) so the panel is fully exercisable before Stage 3 wires the real provider.
+- Locale: FTL moved to `addon/locale/{en-US,zh-CN}/addon.ftl`; scaffold auto-prefixes IDs with `zoterogpt-` (source uses unprefixed keys). Added keys: `panel-title`, `panel-sidenav`, `panel-placeholder`, `panel-send`, `panel-empty`.
+- Fixes to reach green: added strict-null guards for `body.ownerDocument` in `panel.ts` (tsc `strict`).
+- Gates: `npm run build` (`zotero-plugin build && tsc --noEmit`) **green**; `npm test` → **7 passed** (4 startup + 3 docked panel). Headless harness cannot connect the custom-section element (`body.isConnected === false`), so tests assert (a) the framework invokes `onInit`/`onRender` on item selection and (b) the `wire(body)` UI build + send + streaming via `addon.api.renderPanel(body)` mounted into a connected live document.
+- **Not yet verified:** a real visible GUI run (no computer-use runtime in this environment). The section is expected in the right-hand item pane (and sidenav); confirm auto-expand and appearance manually via `npm start`.
