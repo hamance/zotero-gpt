@@ -37,3 +37,5 @@ action-note-done = 已创建笔记（条目
 
 panel-context-label = 上下文
 panel-context-none = 文库（未选中条目）
+
+split-open = 分屏

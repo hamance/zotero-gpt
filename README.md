@@ -7,6 +7,7 @@ The modernization branch is `dev/zetoro-10`; the staged plan and test log live i
 ## ✨ Features
 
 - **Docked panel, not a floating window** — the chat lives in Zotero's right-hand item pane (and appears in the reader via the sidenav). No overlay that covers your library.
+- **PDF split view** — a labeled **分屏 / Split view** button opens and widens the right pane so the chat sits side-by-side with the PDF; the section also auto-expands while you read a PDF.
 - **Any OpenAI-compatible chat provider** — set your own base URL, model, API key, temperature. A blank key means *no `Authorization` header*, so local servers (Ollama, LM Studio) work out of the box.
 - **Streaming replies with Stop** — type a question and press `Enter`; press `Enter` again (or click Stop) to cancel a running reply.
 - **Per-item context threads** — each item/PDF keeps its own conversation; switching items switches threads (a context bar shows the active item), and the selected item's title/authors/date/abstract are attached so the model answers about that paper.
@@ -63,4 +64,5 @@ See [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md). Notable notes:
 ## ❤️ Support the project
 
 If you find it useful, star/watch the repo and report issues — see the [original project](https://github.com/MuiseDestiny/zotero-gpt).
+
 

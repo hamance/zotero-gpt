@@ -209,7 +209,14 @@ describe("docked panel", function () {
     assert.ok(collapsible, "collapsible-section present");
     // Header title comes from the .label attribute, not textContent, so the
     // framework-injected head/body children survive Fluent translation.
-    assert.equal(collapsible.getAttribute("label"), "Zotero GPT");
+    // The framework sets data-l10n-id and Fluent DOM fills the label attribute
+    // asynchronously, so poll briefly before asserting.
+    let label = collapsible.getAttribute("label");
+    for (let i = 0; i < 10 && label !== "Zotero GPT"; i++) {
+      await Zotero.Promise.delay(100);
+      label = collapsible.getAttribute("label");
+    }
+    assert.equal(label, "Zotero GPT");
     assert.ok(collapsible.querySelector(".head"), "section head survives");
     const body = section!.querySelector('[data-type="body"]') as HTMLElement | null;
     assert.ok(body, "body container survives");
@@ -290,6 +297,40 @@ describe("docked panel", function () {
     const noneTitle = (panel.querySelector(`.${cls}-ctx-title`) as HTMLElement).textContent;
     assert.ok(noneTitle && noneTitle.length > 0, "no-item fallback is a localized string");
     assert.notEqual(noneTitle, "Context Bar Paper", "fallback is not a stale title");
+  });
+  it("auto-expands the section and exposes split-view helpers", async function () {
+    const item = new Zotero.Item("journalArticle");
+    item.setField("title", "Split View Paper");
+    await item.saveTx();
+    await win.ZoteroPane.selectItem(item.id);
+    let section: any = null;
+    for (let i = 0; i < 20 && !section; i++) {
+      await Zotero.Promise.delay(300);
+      section = doc.querySelector("item-pane-custom-section collapsible-section") as any;
+    }
+    assert.ok(section, "docked section connected");
+
+    section.open = false;
+    assert.notOk(section.open, "section collapsed for the test");
+    const ok = api().ensureSectionOpen();
+    assert.isTrue(ok, "ensureSectionOpen found the section");
+    assert.isTrue(section.open, "section re-expanded by ensureSectionOpen");
+
+    let threw = false;
+    try {
+      api().splitView();
+    } catch {
+      threw = true;
+    }
+    assert.isFalse(threw, "splitView runs without throwing");
+    const cp = doc.getElementById("zotero-context-pane") as HTMLElement | null;
+    if (cp) {
+      assert.equal(cp.getAttribute("width"), "420", "context pane widened for split view");
+    }
+    const zcp = (win as any).ZoteroContextPane;
+    if (zcp && typeof zcp.collapsed !== "undefined") {
+      assert.equal(zcp.collapsed, false, "context pane open after split view");
+    }
   });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);

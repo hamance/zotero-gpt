@@ -85,6 +85,83 @@ const currentItemTitle = (): string => {
   }
 };
 
+/** Main window (first Zotero main window). */
+function getMainWindow(): Window | null {
+  try {
+    return (
+      (Zotero as any).getMainWindow?.() ??
+      (Zotero as any).getMainWindows?.()?.[0] ??
+      null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** The framework namespaces + CSS-escapes the paneID as `<pluginID>-<paneID>`. */
+function namespacedPaneID(): string {
+  const raw = `${config.addonID}-${PANE_ID}`;
+  try {
+    const escape = (globalThis as any).CSS?.escape;
+    return typeof escape === "function" ? escape(raw) : raw;
+  } catch {
+    return raw;
+  }
+}
+
+/** The docked section element in a window (or null). */
+function findSection(win: Window | null): HTMLElement | null {
+  try {
+    if (!win?.document) return null;
+    const want = namespacedPaneID();
+    const nodes = win.document.querySelectorAll(
+      "item-pane-custom-section collapsible-section",
+    );
+    for (const el of Array.from(nodes)) {
+      const elAny = el as any;
+      if (elAny.dataset?.pane === want) return el as HTMLElement;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Ensure the docked section is expanded (used for PDF split view). */
+function ensureSectionOpen(win?: Window | null): boolean {
+  try {
+    const sec = findSection(win ?? getMainWindow());
+    if (sec && !(sec as any).open) (sec as any).open = true;
+    return !!sec;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Split view: keep the chat section expanded and open/widen the right
+ * context pane so the chat sits side-by-side with the PDF reader.
+ */
+function splitView(win?: Window | null): boolean {
+  try {
+    const w = win ?? getMainWindow();
+    if (!w) return false;
+    ensureSectionOpen(w);
+    const cp = (w.document as Document).getElementById(
+      "zotero-context-pane",
+    ) as HTMLElement | null;
+    if (cp) {
+      cp.setAttribute("width", "420");
+      cp.style.width = "420px";
+    }
+    const zcp = (w as any).ZoteroContextPane;
+    if (zcp && zcp.collapsed) zcp.collapsed = false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function bump(key: string) {
   try {
     const api = (Zotero as any)[config.addonInstance]?.api as
@@ -101,6 +178,9 @@ const PANEL_CSS = `
 .${REF}-s-toggle:hover{background:#ececec;}
 .${REF}-hint{color:#9a6700;background:#fff8c5;border:1px solid #e0c366;border-radius:6px;padding:4px 8px;font-size:12px;}
 .${REF}-hint[hidden]{display:none;}
+.${REF}-top-row{display:flex;gap:6px;align-items:center;}
+.${REF}-s-split{border:1px solid #c9c9c9;border-radius:6px;background:#f7f7f7;color:#333;padding:3px 10px;cursor:pointer;font:inherit;}
+.${REF}-s-split:hover{background:#ececec;}
 .${REF}-ctx{display:flex;gap:6px;align-items:center;font-size:12px;color:#555;background:#f6f8fa;border:1px solid #e2e2e2;border-radius:6px;padding:4px 8px;min-width:0;}
 .${REF}-ctx-label{color:#888;flex:none;}
 .${REF}-ctx-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
@@ -137,7 +217,10 @@ const PANEL_CSS = `
 const BODY_XHTML = `
 <html:div class="${REF}-panel">
   <html:div class="${REF}-topbar">
-    <html:button class="${REF}-s-toggle" type="button"></html:button>
+    <html:div class="${REF}-top-row">
+      <html:button class="${REF}-s-toggle" type="button"></html:button>
+      <html:button class="${REF}-s-split" type="button"></html:button>
+    </html:div>
     <html:div class="${REF}-hint" hidden="hidden"></html:div>
   </html:div>
   <html:div class="${REF}-settings" hidden="hidden">
@@ -299,6 +382,7 @@ function wire(body: HTMLElement) {
   if (!panel) return;
 
   const toggle = q(body, `.${REF}-s-toggle`) as HTMLButtonElement;
+  const sSplit = q(body, `.${REF}-s-split`) as HTMLButtonElement;
   const hint = q(body, `.${REF}-hint`) as HTMLElement;
   const settings = q(body, `.${REF}-settings`) as HTMLElement;
   const messagesEl = q(body, `.${REF}-messages`) as HTMLElement;
@@ -423,6 +507,8 @@ function wire(body: HTMLElement) {
   input.setAttribute("placeholder", getString("panel-placeholder"));
   send.textContent = state.busy ? getString("panel-stop") : getString("panel-send");
 
+  sSplit.textContent = getString("split-open");
+
   syncToggle();
   populateSettings();
   refreshHint();
@@ -519,6 +605,9 @@ function wire(body: HTMLElement) {
     }
   };
 
+  sSplit.addEventListener("click", () => {
+    splitView();
+  });
   toggle.addEventListener("click", () => {
     state.settingsOpen = !state.settingsOpen;
     syncToggle();
@@ -634,7 +723,7 @@ export const ChatPanel = {
     if (sectionRegistered) return;
     // Default the section to expanded (framework persists open-state in this pref).
     try {
-      Zotero.Prefs.set(`panes.${config.addonID}-${PANE_ID}.open`, true);
+      Zotero.Prefs.set(`panes.${namespacedPaneID()}.open`, true);
     } catch {}
     Zotero.ItemPaneManager.registerSection({
       paneID: PANE_ID,
@@ -663,6 +752,8 @@ export const ChatPanel = {
           state.pending = "";
         }
         state.itemID = id;
+        // Split-screen UX: keep the chat expanded while reading a PDF.
+        if (props?.tabType === "reader") ensureSectionOpen();
         props?.setEnabled?.(true);
         return true;
       },
@@ -692,6 +783,8 @@ export const ChatPanel = {
         };
         inst.api.currentThread = () => thread();
         inst.api.threadKey = () => threadKey();
+        inst.api.ensureSectionOpen = () => ensureSectionOpen();
+        inst.api.splitView = () => splitView();
         inst.api.provider = {
           getConfig,
           setConfig,

@@ -160,7 +160,7 @@ Sub-stage plan (each stage: build + tests green before commit):
 | # | Stage | Status |
 |---|-------|--------|
 | 5a | Per-item conversation threads + visible context bar | **Done** (2026-09-08) |
-| 5b | Split-screen UX: auto-expand section + "split view" button (`setContextPaneOpen(true)`, widen `#zotero-context-pane`) | TODO |
+| 5b | Split-screen UX: auto-expand section + "split view" button (`setContextPaneOpen(true)`, widen `#zotero-context-pane`) | **Done** (2026-09-09) |
 | 5c | Reader linkage: current-page tracking, "explain selection" / "summarize page" / "summarize annotations" actions, `/page N` chat→PDF navigation | TODO |
 | 5d | Optional: persist per-item threads to disk (JSON under data dir) | TODO (maybe later) |
 
@@ -173,3 +173,17 @@ Sub-stage plan (each stage: build + tests green before commit):
 - API surface additions: `addon.api.renderPanel(body, itemID?)` (mount with a specific context), `setActiveItem(id)`, `currentThread()`, `threadKey()` (test/reader hooks).
 - Notes: threads are in-memory for now (per-session); disk persistence is Stage 5d.
 - Gates: `npm run build` green; `npm test` → **30 passed** (startup 4 + docked panel 8 + chat provider 8 + embedding provider 5 + chatlog 5).
+
+### Stage 5b — Split-screen UX: auto-expand + "Split view" button (2026-09-09)
+- **Ask:** "对话框最好能和pdf左右并列分屏" — chat should sit side-by-side with the PDF.
+- Verified in Zotero 10: the right-hand context pane is shown for reader/note tabs (`tabs.js` `_hasContextPaneTypes`), so the docked section is already right of the PDF; 5b makes the split real and comfortable.
+- `panel.ts`:
+  - New `namespacedPaneID()` helper: the framework namespaces + CSS-escapes the paneID as `${pluginID}-${paneID}` (observed `data-pane="zoterogpt\@polygon\.org-zoterogpt-chat"`). `findSection()` now locates the docked section by iterating `item-pane-custom-section collapsible-section` and matching `dataset.pane`.
+  - `ensureSectionOpen(win?)` expands the docked section (`collapsible-section.open = true`); `splitView(win?)` additionally opens `ZoteroContextPane` (collapsed=false) and widens `#zotero-context-pane` to 420px. Both wrapped + fail-soft.
+  - Topbar now has a labeled **Split view / 分屏** button (`split-open` FTL) next to Settings.
+  - `onItemChange`: when `props.tabType === "reader"` (PDF open), auto-expand the section.
+  - Fixed the default-open pref key to the real namespaced pane id (`panes.<namespaced>.open`).
+- Test hardening: the pre-existing "section header survives l10n" test raced Fluent DOM filling the `label` attribute — it now polls for the label before asserting (real behavior unchanged; `data-l10n-id` was already set).
+- Exposed `addon.api.ensureSectionOpen` / `addon.api.splitView`.
+- Gates: `npm run build` green; `npm test` → **31 passed** (adds 1 split-view test).
+
