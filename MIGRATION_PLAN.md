@@ -144,3 +144,32 @@ Embeddings may live on a different host, use a different model/key, or run **loc
 - Locale keys (en-US/zh-CN): `action-export`, `action-note`, `action-empty`, `action-exported`, `action-note-done`.
 - Debug note: `Zotero.File.pathToFile` rejects mixed `/`+`\` Windows paths, so `exportToMd` converts to platform-native separators before calling File APIs and returns the native path.
 - Gates: `npm run build` green; `npm test` → **28 passed** (adds 5 chat-log tests: markdown, HTML escaping, real file export under the Zotero data dir, child-note creation, UI button enable/disable).
+
+### Stage 5 — PDF split-screen, per-item context, reader linkage (DESIGN, 2026-09-08)
+User goals: (1) chat split side-by-side with the PDF, (2) chat corresponds to the PDF / per-item context division, (3) PDF actions linked into the chat.
+
+Verified Zotero 10.0.1 API facts (from `omni.ja`):
+- `Zotero.ItemPaneManager.registerSection(...)` is the supported docked-panel API; `Zotero.Reader.registerReaderTabPanel` does NOT exist in Z10.
+- The right-hand "context pane" is shown for `reader`/`note` tabs (`tabs.js` `_hasContextPaneTypes = ['reader','note']`), so the docked section is already side-by-side with an open PDF at window level.
+- Context pane DOM: `#zotero-context-pane` + splitters `zotero-context-splitter[-stacked]`; `reader.setContextPaneOpen(open)` toggles it per reader tab.
+- Reader access: `Zotero.Reader.getByTabID(tabID)` / `Zotero.Reader._readers`; `reader.itemID`, `reader.navigate({pageIndex})`, `reader._iframeWindow.PDFViewerApplication` (pdf.js: `.pdfViewer.currentPageNumber`, `.eventBus`, `.pdfDocument.getPage(n).getTextContent()`).
+- Annotations: `item.getAnnotations()`.
+
+Sub-stage plan (each stage: build + tests green before commit):
+
+| # | Stage | Status |
+|---|-------|--------|
+| 5a | Per-item conversation threads + visible context bar | **Done** (2026-09-08) |
+| 5b | Split-screen UX: auto-expand section + "split view" button (`setContextPaneOpen(true)`, widen `#zotero-context-pane`) | TODO |
+| 5c | Reader linkage: current-page tracking, "explain selection" / "summarize page" / "summarize annotations" actions, `/page N` chat→PDF navigation | TODO |
+| 5d | Optional: persist per-item threads to disk (JSON under data dir) | TODO (maybe later) |
+
+### Stage 5a — Per-item context threads + context bar (2026-09-08)
+- **Ask:** "对话框最好能和pdf对应，划分context" — each PDF/item should have its own chat context, and the panel should make the correspondence visible.
+- `panel.ts` state refactor: `state.messages: ChatMessage[]` → `state.threads: Map<number, ChatMessage[]>` keyed by itemID (`0` = library view, no item). Helpers `threadKey()` / `thread()` return the active item's conversation, created on first use.
+- All read/write points moved to `thread()`: rendering, `/clear` (clears only the current item's thread), export, save-as-note, Send/Stop.
+- Item switching (`onItemChange`) now cancels any in-flight reply and clears `pending`/`busy` so a reply never lands in the wrong thread; `onSend` captures `threadKey()` and only commits deltas/replies while the same item is still active.
+- New **context bar** above the messages: shows the active item title (or a localized "no item selected" fallback). FTL keys `panel-context-label` / `panel-context-none` (en-US + zh-CN); CSS `.zoterogpt-ctx[-label|-title]`.
+- API surface additions: `addon.api.renderPanel(body, itemID?)` (mount with a specific context), `setActiveItem(id)`, `currentThread()`, `threadKey()` (test/reader hooks).
+- Notes: threads are in-memory for now (per-session); disk persistence is Stage 5d.
+- Gates: `npm run build` green; `npm test` → **30 passed** (startup 4 + docked panel 8 + chat provider 8 + embedding provider 5 + chatlog 5).

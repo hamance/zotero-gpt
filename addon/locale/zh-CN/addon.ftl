@@ -34,3 +34,6 @@ action-note = 保存为笔记
 action-empty = 还没有可保存的对话。
 action-exported = 对话已导出到
 action-note-done = 已创建笔记（条目
+
+panel-context-label = 上下文
+panel-context-none = 文库（未选中条目）

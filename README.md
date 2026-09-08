@@ -9,7 +9,7 @@ The modernization branch is `dev/zetoro-10`; the staged plan and test log live i
 - **Docked panel, not a floating window** — the chat lives in Zotero's right-hand item pane (and appears in the reader via the sidenav). No overlay that covers your library.
 - **Any OpenAI-compatible chat provider** — set your own base URL, model, API key, temperature. A blank key means *no `Authorization` header*, so local servers (Ollama, LM Studio) work out of the box.
 - **Streaming replies with Stop** — type a question and press `Enter`; press `Enter` again (or click Stop) to cancel a running reply.
-- **Selected-item context** — when an item is selected, its title/authors/date/abstract are attached as context so the model answers about that paper.
+- **Per-item context threads** — each item/PDF keeps its own conversation; switching items switches threads (a context bar shows the active item), and the selected item's title/authors/date/abstract are attached so the model answers about that paper.
 - **Settings UI** (open by default on first run):
   - *Chat*: base URL, API key, model (with refresh-from-`/v1/models`), temperature.
   - *Embeddings*: enable, base URL, key, model, provider type, optional dimensions, and a **Test connection** button.
@@ -63,3 +63,4 @@ See [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md). Notable notes:
 ## ❤️ Support the project
 
 If you find it useful, star/watch the repo and report issues — see the [original project](https://github.com/MuiseDestiny/zotero-gpt).
+

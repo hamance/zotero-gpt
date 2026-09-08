@@ -34,21 +34,55 @@ const XHTML = "http://www.w3.org/1999/xhtml";
 
 let sectionRegistered = false;
 
-/** Conversation + UI state (survives section re-renders). */
+/**
+ * Conversation + UI state (survives section re-renders).
+ * Chat history is kept per item ("context threads"): key = itemID, with 0
+ * reserved for the library view when no item is selected.
+ */
+const GLOBAL_THREAD = 0;
+
 const state: {
-  messages: ChatMessage[];
+  threads: Map<number, ChatMessage[]>;
   pending: string;
   busy: boolean;
   itemID: number | null;
   activeStream: ChatStream | null;
   settingsOpen: boolean;
 } = {
-  messages: [],
+  threads: new Map(),
   pending: "",
   busy: false,
   itemID: null,
   activeStream: null,
   settingsOpen: true,
+};
+
+/** Map key for the active thread (itemID, or 0 when no item is selected). */
+const threadKey = (): number => state.itemID ?? GLOBAL_THREAD;
+
+/** The current item's conversation; created on first use. */
+const thread = (): ChatMessage[] => {
+  const key = threadKey();
+  let t = state.threads.get(key);
+  if (!t) {
+    t = [];
+    state.threads.set(key, t);
+  }
+  return t;
+};
+
+/** Title of the currently selected item ("" when none / not an item). */
+const currentItemTitle = (): string => {
+  try {
+    const item = state.itemID
+      ? (Zotero as any).Items?.get?.(state.itemID)
+      : null;
+    return item && typeof item.getField === "function"
+      ? String(item.getField?.("title") || "")
+      : "";
+  } catch {
+    return "";
+  }
 };
 
 function bump(key: string) {
@@ -67,6 +101,9 @@ const PANEL_CSS = `
 .${REF}-s-toggle:hover{background:#ececec;}
 .${REF}-hint{color:#9a6700;background:#fff8c5;border:1px solid #e0c366;border-radius:6px;padding:4px 8px;font-size:12px;}
 .${REF}-hint[hidden]{display:none;}
+.${REF}-ctx{display:flex;gap:6px;align-items:center;font-size:12px;color:#555;background:#f6f8fa;border:1px solid #e2e2e2;border-radius:6px;padding:4px 8px;min-width:0;}
+.${REF}-ctx-label{color:#888;flex:none;}
+.${REF}-ctx-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
 .${REF}-settings{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
 .${REF}-settings[hidden]{display:none;}
 .${REF}-group{display:flex;flex-direction:column;gap:5px;border-top:1px solid #ececec;padding-top:6px;}
@@ -146,6 +183,10 @@ const BODY_XHTML = `
     </html:div>
     <html:div class="${REF}-settings-actions"><html:button class="${REF}-s-save" type="button"></html:button></html:div>
   </html:div>
+  <html:div class="${REF}-ctx">
+    <html:span class="${REF}-ctx-label"></html:span>
+    <html:span class="${REF}-ctx-title"></html:span>
+  </html:div>
   <html:div class="${REF}-messages"></html:div>
   <html:div class="${REF}-actions">
     <html:button class="${REF}-btn ${REF}-a-export" type="button"></html:button>
@@ -175,14 +216,14 @@ function syncMessages(body: HTMLElement) {
   container.textContent = "";
   const doc = body.ownerDocument;
   if (!doc) return;
-  if (state.messages.length === 0 && !state.pending) {
+  if (thread().length === 0 && !state.pending) {
     const empty = doc.createElementNS(XHTML, "div");
     empty.setAttribute("class", `${REF}-empty`);
     empty.textContent = getString("panel-empty");
     container.appendChild(empty);
     return;
   }
-  for (const m of state.messages) {
+  for (const m of thread()) {
     const b = doc.createElementNS(XHTML, "div");
     b.setAttribute(
       "class",
@@ -206,7 +247,7 @@ function itemContextSystem(): ChatMessage | null {
     const id = state.itemID;
     if (!id) return null;
     const item = (Zotero as any).Items?.get?.(id);
-    if (!item || typeof item.isItem !== "function" || !item.isItem()) return null;
+    if (!item || typeof item.getField !== "function") return null;
     const title = item.getField?.("title") || "";
     const creators =
       item
@@ -282,28 +323,19 @@ function wire(body: HTMLElement) {
   const eModels = body.querySelector(`#${REF}-embed-models`) as HTMLDataListElement | null;
   const aExport = q(body, `.${REF}-a-export`) as HTMLButtonElement;
   const aNote = q(body, `.${REF}-a-note`) as HTMLButtonElement;
+  const ctxLabel = q(body, `.${REF}-ctx-label`) as HTMLElement;
+  const ctxTitle = q(body, `.${REF}-ctx-title`) as HTMLElement;
 
-  const getItemTitle = (): string => {
-    try {
-      const item = state.itemID
-        ? (Zotero as any).Items?.get?.(state.itemID)
-        : null;
-      return item && typeof item.isItem === "function" && item.isItem()
-        ? String(item.getField?.("title") || "")
-        : "";
-    } catch {
-      return "";
-    }
-  };
+  const getItemTitle = (): string => currentItemTitle();
 
   const refreshActions = () => {
-    const has = state.messages.length > 0;
+    const has = thread().length > 0;
     aExport.disabled = !has;
     aNote.disabled = !has;
   };
 
   const note = (text: string) => {
-    state.messages.push({ role: "assistant", content: text });
+    thread().push({ role: "assistant", content: text });
     state.pending = "";
     syncMessages(body);
     refreshActions();
@@ -384,6 +416,8 @@ function wire(body: HTMLElement) {
     getString("settings-embed-dim");
   eRefresh.textContent = getString("settings-refresh");
   eTest.textContent = getString("settings-embed-test");
+  ctxLabel.textContent = getString("panel-context-label");
+  ctxTitle.textContent = currentItemTitle() || getString("panel-context-none");
   aExport.textContent = getString("action-export");
   aNote.textContent = getString("action-note");
   input.setAttribute("placeholder", getString("panel-placeholder"));
@@ -404,7 +438,7 @@ function wire(body: HTMLElement) {
     const arg = parts.slice(1).join(" ");
     switch (cmd) {
       case "/clear":
-        state.messages = [];
+        thread().length = 0;
         state.pending = "";
         syncMessages(body);
         refreshActions();
@@ -444,37 +478,44 @@ function wire(body: HTMLElement) {
 
     state.busy = true;
     send.textContent = getString("panel-stop");
-    state.messages.push({ role: "user", content: text });
+    thread().push({ role: "user", content: text });
     syncMessages(body);
 
+    const key = threadKey();
     const sys = itemContextSystem();
-    const outgoing = sys ? [sys, ...state.messages] : [...state.messages];
+    const outgoing = sys ? [sys, ...thread()] : [...thread()];
     const stream = streamChat(outgoing, (delta) => {
       state.pending += delta;
-      syncMessages(body);
+      if (threadKey() === key) syncMessages(body);
     });
     state.activeStream = stream;
     state.pending = "";
 
     try {
       const full = await stream.done;
-      state.messages.push({
-        role: "assistant",
-        content: full || "(empty response)",
-      });
+      if (threadKey() === key) {
+        thread().push({
+          role: "assistant",
+          content: full || "(empty response)",
+        });
+      }
     } catch (e: any) {
-      state.messages.push({
-        role: "assistant",
-        content: `\u26a0 ${e?.message || e}`,
-      });
+      if (threadKey() === key) {
+        thread().push({
+          role: "assistant",
+          content: `\u26a0 ${e?.message || e}`,
+        });
+      }
     } finally {
-      state.pending = "";
-      state.busy = false;
-      state.activeStream = null;
-      send.textContent = getString("panel-send");
-      syncMessages(body);
-      refreshActions();
-      input.focus();
+      if (threadKey() === key) {
+        state.pending = "";
+        state.busy = false;
+        state.activeStream = null;
+        send.textContent = getString("panel-send");
+        syncMessages(body);
+        refreshActions();
+        input.focus();
+      }
     }
   };
 
@@ -538,12 +579,12 @@ function wire(body: HTMLElement) {
     note(getString("settings-saved"));
   });
   aExport.addEventListener("click", async () => {
-    if (!state.messages.length) {
+    if (!thread().length) {
       note(getString("action-empty"));
       return;
     }
     try {
-      const path = await exportToMd(state.messages, {
+      const path = await exportToMd(thread(), {
         itemTitle: getItemTitle(),
         itemID: state.itemID,
       });
@@ -553,13 +594,13 @@ function wire(body: HTMLElement) {
     }
   });
   aNote.addEventListener("click", async () => {
-    if (!state.messages.length) {
+    if (!thread().length) {
       note(getString("action-empty"));
       return;
     }
     try {
       const id = await saveAsNote(
-        state.messages,
+        thread(),
         { itemTitle: getItemTitle(), itemID: state.itemID },
         state.itemID,
       );
@@ -612,8 +653,16 @@ export const ChatPanel = {
         ztoolkit.log("Zotero GPT section init");
       },
       onItemChange(props: any) {
-        state.itemID =
+        const id =
           props?.item?.id ?? props?.itemID ?? props?.itemId ?? null;
+        if (id !== state.itemID) {
+          // Switching items switches the context thread: drop any in-flight reply.
+          state.activeStream?.cancel?.();
+          state.activeStream = null;
+          state.busy = false;
+          state.pending = "";
+        }
+        state.itemID = id;
         props?.setEnabled?.(true);
         return true;
       },
@@ -628,7 +677,21 @@ export const ChatPanel = {
     try {
       const inst = (Zotero as any)[config.addonInstance];
       if (inst?.api) {
-        inst.api.renderPanel = (body: HTMLElement) => wire(body);
+        inst.api.renderPanel = (body: HTMLElement, itemID?: number | null) => {
+          if (itemID !== undefined) state.itemID = itemID;
+          wire(body);
+        };
+        // Test/reader hook: switch the active context thread.
+        inst.api.setActiveItem = (id: number | null) => {
+          if (id === state.itemID) return;
+          state.itemID = id;
+          state.activeStream?.cancel?.();
+          state.activeStream = null;
+          state.busy = false;
+          state.pending = "";
+        };
+        inst.api.currentThread = () => thread();
+        inst.api.threadKey = () => threadKey();
         inst.api.provider = {
           getConfig,
           setConfig,
@@ -664,3 +727,4 @@ export const ChatPanel = {
     sectionRegistered = false;
   },
 };
+

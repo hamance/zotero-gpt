@@ -34,3 +34,6 @@ action-note = Save as note
 action-empty = No conversation to save yet.
 action-exported = Conversation exported to
 action-note-done = Note created (item
+
+panel-context-label = Context
+panel-context-none = Library (no item selected)

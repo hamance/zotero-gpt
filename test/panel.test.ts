@@ -225,7 +225,74 @@ describe("docked panel", function () {
     assert.isAbove(rect.height, 0, "panel laid out with real height");
   });
 
+
+  it("keeps separate conversation threads per item (context division)", async function () {
+    provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
+    mockHttp("Reply for A");
+    const itemA = new Zotero.Item("journalArticle");
+    itemA.setField("title", "Thread Paper A");
+    await itemA.saveTx();
+    const itemB = new Zotero.Item("journalArticle");
+    itemB.setField("title", "Thread Paper B");
+    await itemB.saveTx();
+
+    host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(host);
+    api().renderPanel(host, itemA.id);
+    const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+    const input = panel.querySelector("textarea") as HTMLTextAreaElement;
+    const send = panel.querySelector(`.${cls}-send`) as HTMLButtonElement;
+    input.value = "Question about A";
+    send.click();
+    await Zotero.Promise.delay(1200);
+
+    let bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+    assert.ok(
+      bubbles.some((b) => /Question about A/.test(b.textContent || "")),
+      "A: user question stored",
+    );
+    assert.ok(
+      bubbles.some((b) => b.className.includes("assistant") && /Reply for A/.test(b.textContent || "")),
+      "A: assistant reply stored",
+    );
+
+    // Switch to item B: its context thread is independent (empty).
+    api().renderPanel(host, itemB.id);
+    bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+    assert.equal(bubbles.length, 0, "B starts with an empty thread");
+    assert.equal(api().currentThread().length, 0, "B thread empty in state");
+
+    // Switch back to item A: its thread is preserved.
+    api().renderPanel(host, itemA.id);
+    bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+    assert.ok(
+      bubbles.some((b) => /Question about A/.test(b.textContent || "")),
+      "A thread restored after switching away",
+    );
+    assert.isAtLeast(api().currentThread().length, 2, "A thread has user + assistant");
+  });
+
+  it("shows the active item as the chat context bar", async function () {
+    const item = new Zotero.Item("journalArticle");
+    item.setField("title", "Context Bar Paper");
+    await item.saveTx();
+    host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(host);
+    api().renderPanel(host, item.id);
+    const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+    const ctxLabel = panel.querySelector(`.${cls}-ctx-label`) as HTMLElement;
+    const ctxTitle = panel.querySelector(`.${cls}-ctx-title`) as HTMLElement;
+    assert.ok(ctxLabel && ctxTitle, "context bar rendered");
+    assert.equal(ctxTitle.textContent, "Context Bar Paper", "shows the selected item title");
+    assert.ok((ctxLabel.textContent || "").length > 0, "context label localized");
+
+    api().renderPanel(host, null);
+    const noneTitle = (panel.querySelector(`.${cls}-ctx-title`) as HTMLElement).textContent;
+    assert.ok(noneTitle && noneTitle.length > 0, "no-item fallback is a localized string");
+    assert.notEqual(noneTitle, "Context Bar Paper", "fallback is not a stale title");
+  });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);
   });
 });
+
