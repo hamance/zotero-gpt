@@ -57,6 +57,22 @@ describe("reader (PDF) linkage helpers", function () {
     assert.isNull(getReaderForItem(99, readers));
   });
 
+  it("matches a reader opened on a PDF attachment when the item pane shows the parent", async function () {
+    const parent = new Zotero.Item("journalArticle");
+    parent.setField("title", "Reader Match Parent");
+    await parent.saveTx();
+    const openPDFID = 424242; // fake attachment id the reader is keyed by
+    const orig = (parent as any).getAttachments.bind(parent);
+    (parent as any).getAttachments = () => [openPDFID];
+    try {
+      const readers = [{ itemID: openPDFID }];
+      assert.equal(getReaderForItem(parent.id, readers)?.itemID, openPDFID);
+      assert.equal(getReaderForItem(openPDFID, readers)?.itemID, openPDFID);
+      assert.isNull(getReaderForItem(999, readers));
+    } finally {
+      (parent as any).getAttachments = orig;
+    }
+  });
   it("reads current page / selection / page text from a fake pdf.js reader", async function () {
     const reader: any = {
       _iframeWindow: {
@@ -116,4 +132,5 @@ describe("reader (PDF) linkage helpers", function () {
     assert.isFunction(trackPageChanges(null as any, () => {}));
   });
 });
+
 

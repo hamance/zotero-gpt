@@ -188,3 +188,13 @@ Sub-stage plan (each stage: build + tests green before commit):
 - Gates: `npm run build` green; `npm test` → **31 passed** (adds 1 split-view test).
 
 
+
+
+### Stage 5c fix — PDF quick actions stayed disabled in the real GUI (2026-09-09)
+- **Symptom (user report):** after selecting text in an open PDF, "解释选中" (explain selection) and the other quick-action buttons were still disabled.
+- **Root cause (verified in Zotero 10.0.1 `omni.ja`, `chrome/content/zotero/elements/contextPane.js` 329-334):** while a reader tab is open, the item pane resolves its `item` to the **parent** item of the PDF attachment (`targetItem = parentID ? Zotero.Items.get(parentID) : item`), but readers are keyed by **attachment id** (`reader.itemID`). Our one-shot `getReaderForItem(item.id)` therefore never matched, so the buttons stayed disabled. The reader also registers **asynchronously** after a PDF opens, so a check only at render time was not enough.
+- **Fix:**
+  - `src/modules/reader.ts`: `getReaderForItem(itemID)` now matches the item id plus its attachments (`item.getAttachments()`) and its parent (`item.parentID`) via a `relatedItemIDs()` set.
+  - `src/modules/panel.ts`: `refreshPdfActions()` re-enables the buttons as soon as a reader is found; on `pagechanging` it re-calls `refreshPdfActions()` (previously only `syncPageLabel()`); when no reader is found and an item is selected, it starts a 1s `setInterval` poll (`readerPollTimer`/`readerPollFn`) until the reader registers — polling stops on success, item switch, and `unregister()`.
+- **Tests:** new `test/reader.test.ts` case stubs the parent's `getAttachments()` and asserts `getReaderForItem(parent.id)` matches a reader keyed by the attachment id; `test/panel.test.ts` renders the panel for the parent item with a reader keyed by a fake attachment id and asserts the selection action is enabled, the page indicator reads `p. 2`, and the selection streams a chat reply. (A bare `new Zotero.Item("attachment")`'s `parentID` does not persist in the test DB, so tests stub `getAttachments()` instead.)
+- Gates: `npm run build` green; `npm test` → **42 passed**.

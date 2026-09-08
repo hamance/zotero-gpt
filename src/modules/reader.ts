@@ -14,7 +14,14 @@ export interface AnnotationSummary {
   pageLabel: string;
 }
 
-/** The PDF reader tab currently open for an item (or null). */
+/**
+ * The PDF reader tab currently open for an item (or null).
+ *
+ * Zotero keys readers by the *attachment* item id, but the item pane shows
+ * the *parent* item when a reader is open (contextPane.js resolves
+ * `targetItem = parentID ? Zotero.Items.get(parentID) : item`), so we match
+ * the item itself AND any of its attachments / its parent.
+ */
 export function getReaderForItem(
   itemID: number | null | undefined,
   readers?: any[],
@@ -22,10 +29,27 @@ export function getReaderForItem(
   if (!itemID) return null;
   try {
     const arr = readers ?? (Zotero as any).Reader?._readers ?? [];
-    return arr.find((r: any) => r && r.itemID === itemID) ?? null;
+    const ids = relatedItemIDs(itemID);
+    return arr.find((r: any) => r && r.itemID != null && ids.has(r.itemID)) ?? null;
   } catch {
     return null;
   }
+}
+
+/** The item id plus its attachment ids and parent id (for reader matching). */
+function relatedItemIDs(itemID: number): Set<number> {
+  const ids = new Set<number>([itemID]);
+  try {
+    const item = (Zotero as any).Items?.get?.(itemID);
+    if (!item) return ids;
+    if (typeof item.getAttachments === "function") {
+      for (const aid of item.getAttachments() ?? []) ids.add(aid);
+    }
+    if (item.parentID != null) ids.add(item.parentID);
+  } catch {
+    /* keep the plain id */
+  }
+  return ids;
 }
 
 /** The reader's iframe window (pdf.js host), or null. */
@@ -217,3 +241,4 @@ export function trackPageChanges(
 
 /** Exported for tests/debugging: the addon ref this module belongs to. */
 export const readerRef = config.addonRef;
+

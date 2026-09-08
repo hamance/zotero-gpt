@@ -350,14 +350,20 @@ describe("docked panel", function () {
     assert.ok(qAnn.disabled, "annotations disabled without a reader");
   });
 
-  it("links the open PDF to the chat (selection -> user message, page indicator)", async function () {
+  it("links the open PDF to the chat from the parent item (attachment reader)", async function () {
     provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
     mockHttp("Selection reply");
-    const item = new Zotero.Item("journalArticle");
-    item.setField("title", "Selection Paper");
-    await item.saveTx();
+    const parent = new Zotero.Item("journalArticle");
+    parent.setField("title", "Selection Paper Parent");
+    await parent.saveTx();
+    // Zotero keys readers by the ATTACHMENT id, but the item pane shows the
+    // parent item. Stub the parent's attachments instead of creating a real
+    // child (a bare attachment's parentID does not persist in the test DB).
+    const openPDFID = 424242;
+    const origGetAttachments = (parent as any).getAttachments.bind(parent);
+    (parent as any).getAttachments = () => [openPDFID];
     const fakeReader: any = {
-      itemID: item.id,
+      itemID: openPDFID,
       _iframeWindow: {
         getSelection: () => ({ toString: () => "selected phrase" }),
         PDFViewerApplication: {
@@ -376,10 +382,12 @@ describe("docked panel", function () {
     try {
       host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
       doc.documentElement.appendChild(host);
-      api().renderPanel(host, item.id);
+      // The item pane shows the PARENT item while the reader is open on the
+      // attachment — quick actions must still enable.
+      api().renderPanel(host, parent.id);
       const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
       const qSel = panel.querySelector(`.${cls}-q-sel`) as HTMLButtonElement;
-      assert.isFalse(qSel.disabled, "selection enabled with an open reader");
+      assert.isFalse(qSel.disabled, "selection enabled when the reader is on the item's attachment");
       const ctxPage = panel.querySelector(`.${cls}-ctx-page`) as HTMLElement;
       assert.equal(ctxPage.textContent, "p. 2", "page indicator shows the current page");
 
@@ -395,6 +403,7 @@ describe("docked panel", function () {
         "reply streamed for the selection",
       );
     } finally {
+      (parent as any).getAttachments = origGetAttachments;
       if (prevReaders === undefined) {
         delete (Zotero as any).Reader._readers;
       } else {

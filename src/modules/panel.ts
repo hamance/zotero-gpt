@@ -181,6 +181,18 @@ function splitView(win?: Window | null): boolean {
   }
 }
 
+// Re-check timer used to enable PDF quick actions once a reader registers.
+let readerPollTimer: ReturnType<typeof setInterval> | null = null;
+let readerPollFn: (() => void) | null = null;
+
+function stopReaderPoll() {
+  if (readerPollTimer != null) {
+    clearInterval(readerPollTimer);
+    readerPollTimer = null;
+  }
+  readerPollFn = null;
+}
+
 function bump(key: string) {
   try {
     const api = (Zotero as any)[config.addonInstance]?.api as
@@ -463,14 +475,35 @@ function wire(body: HTMLElement) {
     qSel.disabled = !hasReader;
     qPage.disabled = !hasReader;
     qAnn.disabled = !hasReader;
-    if (hasReader && !state.pageCleanup) {
-      state.currentPage = getCurrentPageNumber(reader);
-      state.pageCleanup = trackPageChanges(reader, (p) => {
-        state.currentPage = p;
-        syncPageLabel();
-      });
+    if (hasReader) {
+      if (!state.pageCleanup) {
+        state.currentPage = getCurrentPageNumber(reader);
+        state.pageCleanup = trackPageChanges(reader, (p) => {
+          state.currentPage = p;
+          refreshPdfActions();
+        });
+      }
+      syncPageLabel();
+      stopReaderPoll();
+    } else {
+      syncPageLabel();
+      // The reader registers asynchronously after a PDF opens; poll briefly
+      // so the actions enable as soon as it is available.
+      if (state.itemID) {
+        readerPollFn = () => refreshPdfActions();
+        if (readerPollTimer == null) {
+          readerPollTimer = setInterval(() => {
+            try {
+              readerPollFn?.();
+            } catch {
+              /* keep polling */
+            }
+          }, 1000);
+        }
+      } else {
+        stopReaderPoll();
+      }
     }
-    syncPageLabel();
   };
 
   const note = (text: string) => {
@@ -876,6 +909,7 @@ export const ChatPanel = {
           state.pageCleanup = null;
           state.reader = null;
           state.currentPage = 0;
+          stopReaderPoll();
         }
         state.itemID = id;
         // Split-screen UX: keep the chat expanded while reading a PDF.
@@ -954,6 +988,7 @@ export const ChatPanel = {
   },
 
   unregister() {
+    stopReaderPoll();
     if (!sectionRegistered) return;
     Zotero.ItemPaneManager.unregisterSection(PANE_ID);
     sectionRegistered = false;
