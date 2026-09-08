@@ -5,7 +5,7 @@ panel-title =
     .label = Zotero GPT
 panel-sidenav =
     .tooltiptext = Zotero GPT 对话
-panel-placeholder = 就所选条目提问…（命令：/clear、/api、/model、/key）
+panel-placeholder = 就所选条目提问…（命令：/clear、/api、/model、/key、/page）
 panel-send = 发送
 panel-stop = 停止
 panel-empty = Zotero GPT 已就绪。选择一个条目后提问。
@@ -39,3 +39,14 @@ panel-context-label = 上下文
 panel-context-none = 文库（未选中条目）
 
 split-open = 分屏
+
+
+pdf-action-selection = 解释选中
+pdf-action-page = 总结本页
+pdf-action-annotations = 总结批注
+pdf-no-open = 请先打开该条目的 PDF 阅读器。
+pdf-no-selection = 请先在 PDF 中选中文字。
+pdf-no-page-text = 当前页无可提取的文本。
+pdf-no-annotations = 该 PDF 暂无批注。
+pdf-page-goto = 已跳转到第
+pdf-page-invalid = 用法：/page <页码>

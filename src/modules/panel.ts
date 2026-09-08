@@ -26,6 +26,19 @@ import {
   exportToMd,
   saveAsNote,
 } from "./chatlog";
+import {
+  buildAnnotationsMessage,
+  buildPageMessage,
+  buildSelectionMessage,
+  collectAnnotations,
+  getCurrentPageNumber,
+  getPageText,
+  getReaderForItem,
+  getSelectionText,
+  navigateToPage,
+  parsePageCommand,
+  trackPageChanges,
+} from "./reader";
 
 const REF = config.addonRef;
 const PANE_ID = `${REF}-chat`;
@@ -48,6 +61,9 @@ const state: {
   itemID: number | null;
   activeStream: ChatStream | null;
   settingsOpen: boolean;
+  reader: any;
+  currentPage: number;
+  pageCleanup: (() => void) | null;
 } = {
   threads: new Map(),
   pending: "",
@@ -55,6 +71,9 @@ const state: {
   itemID: null,
   activeStream: null,
   settingsOpen: true,
+  reader: null,
+  currentPage: 0,
+  pageCleanup: null,
 };
 
 /** Map key for the active thread (itemID, or 0 when no item is selected). */
@@ -184,6 +203,8 @@ const PANEL_CSS = `
 .${REF}-ctx{display:flex;gap:6px;align-items:center;font-size:12px;color:#555;background:#f6f8fa;border:1px solid #e2e2e2;border-radius:6px;padding:4px 8px;min-width:0;}
 .${REF}-ctx-label{color:#888;flex:none;}
 .${REF}-ctx-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+.${REF}-ctx-page{color:#1a7f37;background:#e6f4ea;border-radius:10px;padding:0 6px;font-size:11px;flex:none;}
+.${REF}-pdf-actions{display:flex;gap:6px;flex-wrap:wrap;}
 .${REF}-settings{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
 .${REF}-settings[hidden]{display:none;}
 .${REF}-group{display:flex;flex-direction:column;gap:5px;border-top:1px solid #ececec;padding-top:6px;}
@@ -269,8 +290,14 @@ const BODY_XHTML = `
   <html:div class="${REF}-ctx">
     <html:span class="${REF}-ctx-label"></html:span>
     <html:span class="${REF}-ctx-title"></html:span>
+    <html:span class="${REF}-ctx-page"></html:span>
   </html:div>
   <html:div class="${REF}-messages"></html:div>
+  <html:div class="${REF}-pdf-actions">
+    <html:button class="${REF}-btn ${REF}-q-sel" type="button"></html:button>
+    <html:button class="${REF}-btn ${REF}-q-page" type="button"></html:button>
+    <html:button class="${REF}-btn ${REF}-q-ann" type="button"></html:button>
+  </html:div>
   <html:div class="${REF}-actions">
     <html:button class="${REF}-btn ${REF}-a-export" type="button"></html:button>
     <html:button class="${REF}-btn ${REF}-a-note" type="button"></html:button>
@@ -409,6 +436,10 @@ function wire(body: HTMLElement) {
   const aNote = q(body, `.${REF}-a-note`) as HTMLButtonElement;
   const ctxLabel = q(body, `.${REF}-ctx-label`) as HTMLElement;
   const ctxTitle = q(body, `.${REF}-ctx-title`) as HTMLElement;
+  const ctxPage = q(body, `.${REF}-ctx-page`) as HTMLElement;
+  const qSel = q(body, `.${REF}-q-sel`) as HTMLButtonElement;
+  const qPage = q(body, `.${REF}-q-page`) as HTMLButtonElement;
+  const qAnn = q(body, `.${REF}-q-ann`) as HTMLButtonElement;
 
   const getItemTitle = (): string => currentItemTitle();
 
@@ -416,6 +447,30 @@ function wire(body: HTMLElement) {
     const has = thread().length > 0;
     aExport.disabled = !has;
     aNote.disabled = !has;
+  };
+
+  const syncPageLabel = () => {
+    const has = state.reader && state.currentPage > 0;
+    ctxPage.textContent = has ? `p. ${state.currentPage}` : "";
+    ctxPage.hidden = !has;
+  };
+
+  /** Enable PDF quick actions when a reader is open for the current item. */
+  const refreshPdfActions = () => {
+    const reader = getReaderForItem(state.itemID);
+    state.reader = reader;
+    const hasReader = !!reader;
+    qSel.disabled = !hasReader;
+    qPage.disabled = !hasReader;
+    qAnn.disabled = !hasReader;
+    if (hasReader && !state.pageCleanup) {
+      state.currentPage = getCurrentPageNumber(reader);
+      state.pageCleanup = trackPageChanges(reader, (p) => {
+        state.currentPage = p;
+        syncPageLabel();
+      });
+    }
+    syncPageLabel();
   };
 
   const note = (text: string) => {
@@ -502,6 +557,9 @@ function wire(body: HTMLElement) {
   eTest.textContent = getString("settings-embed-test");
   ctxLabel.textContent = getString("panel-context-label");
   ctxTitle.textContent = currentItemTitle() || getString("panel-context-none");
+  qSel.textContent = getString("pdf-action-selection");
+  qPage.textContent = getString("pdf-action-page");
+  qAnn.textContent = getString("pdf-action-annotations");
   aExport.textContent = getString("action-export");
   aNote.textContent = getString("action-note");
   input.setAttribute("placeholder", getString("panel-placeholder"));
@@ -514,6 +572,7 @@ function wire(body: HTMLElement) {
   refreshHint();
   syncMessages(body);
   refreshActions();
+  refreshPdfActions();
 
   if (panel.dataset.wired === "1") return;
   panel.dataset.wired = "1";
@@ -529,6 +588,21 @@ function wire(body: HTMLElement) {
         syncMessages(body);
         refreshActions();
         return true;
+      case "/page": {
+        const n = parsePageCommand(raw);
+        if (!n) {
+          note(getString("pdf-page-invalid"));
+          return true;
+        }
+        const r = getReaderForItem(state.itemID);
+        if (!r) {
+          note(getString("pdf-no-open"));
+          return true;
+        }
+        navigateToPage(r, n);
+        note(`${getString("pdf-page-goto")} ${n}`);
+        return true;
+      }
       case "/api":
       case "/model":
       case "/key":
@@ -545,10 +619,9 @@ function wire(body: HTMLElement) {
     }
   };
 
-  const onSend = async () => {
-    const text = input.value.trim();
+  const sendText = async (raw: string) => {
+    const text = (raw || "").trim();
     if (!text || state.busy) return;
-    input.value = "";
 
     if (text.startsWith("/") && handleCommand(text)) return;
 
@@ -605,6 +678,55 @@ function wire(body: HTMLElement) {
     }
   };
 
+  const onSend = async () => {
+    const text = input.value.trim();
+    input.value = "";
+    void sendText(text);
+  };
+
+  qSel.addEventListener("click", () => {
+    const r = state.reader;
+    if (!r) {
+      note(getString("pdf-no-open"));
+      return;
+    }
+    const msg = buildSelectionMessage(getSelectionText(r));
+    if (!msg) {
+      note(getString("pdf-no-selection"));
+      return;
+    }
+    void sendText(msg);
+  });
+  qPage.addEventListener("click", async () => {
+    const r = state.reader;
+    if (!r) {
+      note(getString("pdf-no-open"));
+      return;
+    }
+    const page = getCurrentPageNumber(r);
+    const text = await getPageText(r, page);
+    const msg = buildPageMessage(page, text);
+    if (!msg) {
+      note(getString("pdf-no-page-text"));
+      return;
+    }
+    void sendText(msg);
+  });
+  qAnn.addEventListener("click", () => {
+    if (!state.reader) {
+      note(getString("pdf-no-open"));
+      return;
+    }
+    const item = state.itemID
+      ? (Zotero as any).Items?.get?.(state.itemID)
+      : null;
+    const msg = buildAnnotationsMessage(collectAnnotations(item));
+    if (!msg) {
+      note(getString("pdf-no-annotations"));
+      return;
+    }
+    void sendText(msg);
+  });
   sSplit.addEventListener("click", () => {
     splitView();
   });
@@ -750,6 +872,10 @@ export const ChatPanel = {
           state.activeStream = null;
           state.busy = false;
           state.pending = "";
+          state.pageCleanup?.();
+          state.pageCleanup = null;
+          state.reader = null;
+          state.currentPage = 0;
         }
         state.itemID = id;
         // Split-screen UX: keep the chat expanded while reading a PDF.
@@ -785,6 +911,19 @@ export const ChatPanel = {
         inst.api.threadKey = () => threadKey();
         inst.api.ensureSectionOpen = () => ensureSectionOpen();
         inst.api.splitView = () => splitView();
+        inst.api.reader = {
+          getReaderForItem,
+          getCurrentPageNumber,
+          getSelectionText,
+          getPageText,
+          collectAnnotations,
+          buildSelectionMessage,
+          buildPageMessage,
+          buildAnnotationsMessage,
+          parsePageCommand,
+          navigateToPage,
+          trackPageChanges,
+        };
         inst.api.provider = {
           getConfig,
           setConfig,

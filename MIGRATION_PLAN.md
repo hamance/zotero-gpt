@@ -161,7 +161,7 @@ Sub-stage plan (each stage: build + tests green before commit):
 |---|-------|--------|
 | 5a | Per-item conversation threads + visible context bar | **Done** (2026-09-08) |
 | 5b | Split-screen UX: auto-expand section + "split view" button (`setContextPaneOpen(true)`, widen `#zotero-context-pane`) | **Done** (2026-09-09) |
-| 5c | Reader linkage: current-page tracking, "explain selection" / "summarize page" / "summarize annotations" actions, `/page N` chat→PDF navigation | TODO |
+| 5c | Reader linkage: current-page tracking, "explain selection" / "summarize page" / "summarize annotations" actions, `/page N` chat→PDF navigation | **Done** (2026-09-09) |
 | 5d | Optional: persist per-item threads to disk (JSON under data dir) | TODO (maybe later) |
 
 ### Stage 5a — Per-item context threads + context bar (2026-09-08)
@@ -186,4 +186,5 @@ Sub-stage plan (each stage: build + tests green before commit):
 - Test hardening: the pre-existing "section header survives l10n" test raced Fluent DOM filling the `label` attribute — it now polls for the label before asserting (real behavior unchanged; `data-l10n-id` was already set).
 - Exposed `addon.api.ensureSectionOpen` / `addon.api.splitView`.
 - Gates: `npm run build` green; `npm test` → **31 passed** (adds 1 split-view test).
+
 

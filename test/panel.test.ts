@@ -332,6 +332,76 @@ describe("docked panel", function () {
       assert.equal(zcp.collapsed, false, "context pane open after split view");
     }
   });
+
+  it("renders PDF quick actions that are disabled without an open reader", async function () {
+    host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(host);
+    api().renderPanel(host);
+    const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+    const qSel = panel.querySelector(`.${cls}-q-sel`) as HTMLButtonElement;
+    const qPage = panel.querySelector(`.${cls}-q-page`) as HTMLButtonElement;
+    const qAnn = panel.querySelector(`.${cls}-q-ann`) as HTMLButtonElement;
+    assert.ok(qSel && qPage && qAnn, "PDF quick-action buttons rendered");
+    assert.ok((qSel.textContent || "").length > 0, "selection button localized");
+    assert.ok((qPage.textContent || "").length > 0, "page button localized");
+    assert.ok((qAnn.textContent || "").length > 0, "annotations button localized");
+    assert.ok(qSel.disabled, "selection disabled without a reader");
+    assert.ok(qPage.disabled, "page disabled without a reader");
+    assert.ok(qAnn.disabled, "annotations disabled without a reader");
+  });
+
+  it("links the open PDF to the chat (selection -> user message, page indicator)", async function () {
+    provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
+    mockHttp("Selection reply");
+    const item = new Zotero.Item("journalArticle");
+    item.setField("title", "Selection Paper");
+    await item.saveTx();
+    const fakeReader: any = {
+      itemID: item.id,
+      _iframeWindow: {
+        getSelection: () => ({ toString: () => "selected phrase" }),
+        PDFViewerApplication: {
+          pdfViewer: { currentPageNumber: 2 },
+          pdfDocument: {
+            getPage: async () => ({
+              getTextContent: async () => ({ items: [{ str: "page text" }] }),
+            }),
+          },
+        },
+      },
+    };
+    const prevReaders = (Zotero as any).Reader?._readers;
+    if (!(Zotero as any).Reader) (Zotero as any).Reader = {};
+    (Zotero as any).Reader._readers = [fakeReader];
+    try {
+      host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      doc.documentElement.appendChild(host);
+      api().renderPanel(host, item.id);
+      const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+      const qSel = panel.querySelector(`.${cls}-q-sel`) as HTMLButtonElement;
+      assert.isFalse(qSel.disabled, "selection enabled with an open reader");
+      const ctxPage = panel.querySelector(`.${cls}-ctx-page`) as HTMLElement;
+      assert.equal(ctxPage.textContent, "p. 2", "page indicator shows the current page");
+
+      qSel.click();
+      await Zotero.Promise.delay(1200);
+      const bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+      assert.ok(
+        bubbles.some((b) => b.className.includes("user") && /selected phrase/.test(b.textContent || "")),
+        "PDF selection sent into chat as a user message",
+      );
+      assert.ok(
+        bubbles.some((b) => b.className.includes("assistant") && /Selection reply/.test(b.textContent || "")),
+        "reply streamed for the selection",
+      );
+    } finally {
+      if (prevReaders === undefined) {
+        delete (Zotero as any).Reader._readers;
+      } else {
+        (Zotero as any).Reader._readers = prevReaders;
+      }
+    }
+  });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);
   });

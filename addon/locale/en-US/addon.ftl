@@ -5,7 +5,7 @@ panel-title =
     .label = Zotero GPT
 panel-sidenav =
     .tooltiptext = Zotero GPT chat
-panel-placeholder = Ask about this item…  (commands: /clear, /api, /model, /key)
+panel-placeholder = Ask about this item…  (commands: /clear, /api, /model, /key, /page)
 panel-send = Send
 panel-stop = Stop
 panel-empty = Zotero GPT ready. Select an item and ask a question.
@@ -39,3 +39,14 @@ panel-context-label = Context
 panel-context-none = Library (no item selected)
 
 split-open = Split view
+
+
+pdf-action-selection = Explain selection
+pdf-action-page = Summarize page
+pdf-action-annotations = Summarize annotations
+pdf-no-open = Open the PDF reader for this item first.
+pdf-no-selection = Select some text in the PDF first.
+pdf-no-page-text = No page text available for the current page.
+pdf-no-annotations = No annotations found on this PDF.
+pdf-page-goto = Jumped to page
+pdf-page-invalid = Usage: /page <number>
