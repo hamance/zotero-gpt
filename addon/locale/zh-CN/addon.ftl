@@ -53,5 +53,3 @@ pdf-page-invalid = 用法：/page <页码>
 
 pdf-attach-label = PDF 选中
 pdf-attach-remove = 移除选中
-
-settings-context-limit = 上下文长度（tokens）

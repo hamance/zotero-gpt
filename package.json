@@ -32,7 +32,6 @@
     "crypto-js": "^4.2.0",
     "markdown-it": "^13.0.1",
     "markdown-it-mathjax3": "^4.3.2",
-    "punycode": "^2.3.1",
     "zotero-plugin-toolkit": "^5.1.0-beta.13"
   },
   "devDependencies": {
