@@ -60,3 +60,20 @@ export function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+/**
+ * Rough token estimate for context-usage display. Latin text ≈ 4 chars/token;
+ * CJK text is counted more generously (~1 char/token) so Chinese replies do
+ * not look absurdly short.
+ */
+export function estimateTokens(text: string): number {
+  const s = String(text || "");
+  if (!s) return 0;
+  let latin = 0;
+  let cjk = 0;
+  for (const ch of s) {
+    const code = ch.codePointAt(0) || 0;
+    if (code >= 0x4e00 && code <= 0x9fff) cjk++;
+    else if (!/\s/.test(ch)) latin++;
+  }
+  return Math.ceil(latin / 4) + cjk;
+}

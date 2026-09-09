@@ -1,6 +1,6 @@
 import { config } from "../../package.json";
 import { getLocaleID, getString } from "../utils/locale";
-import { renderMarkdown } from "./markdown";
+import { estimateTokens, renderMarkdown } from "./markdown";
 import {
   ChatMessage,
   ChatStream,
@@ -69,6 +69,7 @@ const state: {
   pdfAttach: string | null;
   selectionCleanup: (() => void) | null;
   selectionReader: any;
+  statusEl: HTMLElement | null;
 } = {
   threads: new Map(),
   pending: "",
@@ -82,6 +83,7 @@ const state: {
   pdfAttach: null,
   selectionCleanup: null,
   selectionReader: null,
+  statusEl: null,
 };
 
 /** Map key for the active thread (itemID, or 0 when no item is selected). */
@@ -224,6 +226,8 @@ const PANEL_CSS = `
 .${REF}-ctx-label{color:#888;flex:none;}
 .${REF}-ctx-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
 .${REF}-ctx-page{color:#1a7f37;background:#e6f4ea;border-radius:10px;padding:0 6px;font-size:11px;flex:none;}
+.${REF}-ctx-status{color:#57606a;background:#eef1f4;border:1px solid #dfe3e8;border-radius:10px;padding:0 7px;font-size:11px;flex:none;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:45%;overflow:hidden;text-overflow:ellipsis;}
+.${REF}-ctx-status[hidden]{display:none;}
 .${REF}-pdf-actions{display:flex;gap:6px;flex-wrap:wrap;}
 .${REF}-settings{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
 .${REF}-settings[hidden]{display:none;}
@@ -243,10 +247,11 @@ const PANEL_CSS = `
 .${REF}-e-status{font-size:12px;color:#333;min-height:16px;}
 .${REF}-e-status.ok{color:#1a7f37;}
 .${REF}-e-status.err{color:#cf222e;}
-.${REF}-messages{display:flex;flex-direction:column;gap:6px;min-height:110px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:6px;}
+.${REF}-messages{display:flex;flex-direction:column;gap:6px;min-height:110px;max-height:45vh;overflow-y:auto;overscroll-behavior:contain;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:6px;}
 .${REF}-msg{padding:6px 8px;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;line-height:1.4;}
 .${REF}-msg.user{align-self:flex-end;background:#e8f3ff;color:#0a2540;max-width:85%;}
 .${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:95%;}
+.${REF}-msg.assistant{min-width:0;}
 .${REF}-empty{color:#888;font-style:italic;padding:8px 4px;}
 .${REF}-attach{display:flex;gap:6px;align-items:center;border:1px dashed #c9c9c9;border-radius:6px;background:#f6f8fa;padding:4px 8px;font-size:12px;color:#444;min-width:0;}
 .${REF}-attach[hidden]{display:none;}
@@ -259,6 +264,25 @@ const PANEL_CSS = `
 .${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #c9c9c9;border-radius:6px;padding:6px 8px;font:inherit;}
 .${REF}-send{border:none;border-radius:6px;padding:8px 16px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
 .${REF}-send[disabled]{opacity:.5;cursor:default;}
+/* Compact Markdown rendering for assistant bubbles (scoped, no layout bleed). */
+.${REF}-msg .markdown-body{font-size:13px;line-height:1.5;color:#24292f;white-space:normal;overflow-wrap:break-word;word-break:break-word;min-width:0;}
+.${REF}-msg .markdown-body> :first-child{margin-top:0;}
+.${REF}-msg .markdown-body> :last-child{margin-bottom:0;}
+.${REF}-msg .markdown-body p,.${REF}-msg .markdown-body ul,.${REF}-msg .markdown-body ol,.${REF}-msg .markdown-body blockquote{margin:4px 0;}
+.${REF}-msg .markdown-body ul,.${REF}-msg .markdown-body ol{padding-left:1.3em;}
+.${REF}-msg .markdown-body h1,.${REF}-msg .markdown-body h2,.${REF}-msg .markdown-body h3,.${REF}-msg .markdown-body h4{margin:8px 0 4px;line-height:1.3;font-weight:600;}
+.${REF}-msg .markdown-body h1{font-size:1.25em;}
+.${REF}-msg .markdown-body h2{font-size:1.15em;}
+.${REF}-msg .markdown-body h3,.${REF}-msg .markdown-body h4{font-size:1.05em;}
+.${REF}-msg .markdown-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:rgba(175,184,193,.25);border-radius:4px;padding:1px 4px;}
+.${REF}-msg .markdown-body pre{background:#f6f8fa;border:1px solid #e2e2e2;border-radius:6px;padding:6px 8px;overflow-x:auto;white-space:pre;margin:4px 0;}
+.${REF}-msg .markdown-body pre code{background:none;padding:0;font-size:12px;}
+.${REF}-msg .markdown-body a{color:#0969da;text-decoration:underline;}
+.${REF}-msg .markdown-body table{border-collapse:collapse;margin:4px 0;display:block;max-width:100%;overflow-x:auto;}
+.${REF}-msg .markdown-body th,.${REF}-msg .markdown-body td{border:1px solid #d0d7de;padding:3px 8px;font-size:12px;}
+.${REF}-msg .markdown-body blockquote{border-left:3px solid #d0d7de;padding-left:8px;color:#57606a;}
+.${REF}-msg .markdown-body hr{border:none;border-top:1px solid #d0d7de;margin:6px 0;}
+.${REF}-msg .markdown-body img{max-width:100%;}
 `;
 
 const BODY_XHTML = `
@@ -283,6 +307,7 @@ const BODY_XHTML = `
       </html:label>
       <html:datalist id="${REF}-models"></html:datalist>
       <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-temp"></html:span><html:input class="${REF}-s-temp" type="number" step="0.1" min="0" max="2" /></html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-ctx-limit"></html:span><html:input class="${REF}-s-ctx-limit" type="number" step="1000" min="0" /></html:label>
     </html:div>
     <html:div class="${REF}-group">
       <html:div class="${REF}-group-title ${REF}-lbl-embed"></html:div>
@@ -317,6 +342,7 @@ const BODY_XHTML = `
     <html:span class="${REF}-ctx-label"></html:span>
     <html:span class="${REF}-ctx-title"></html:span>
     <html:span class="${REF}-ctx-page"></html:span>
+    <html:span class="${REF}-ctx-status" hidden="hidden"></html:span>
   </html:div>
   <html:div class="${REF}-messages"></html:div>
   <html:div class="${REF}-pdf-actions">
@@ -345,14 +371,6 @@ function registerStyles(doc: Document) {
   style.setAttribute("id", STYLE_ID);
   style.textContent = PANEL_CSS;
   doc.documentElement?.appendChild(style);
-  // GitHub-style markdown rendering, scoped to .markdown-body only.
-  if (!doc.getElementById(`${STYLE_ID}-md`)) {
-    const link = doc.createElementNS(XHTML, "link");
-    link.setAttribute("id", `${STYLE_ID}-md`);
-    link.setAttribute("rel", "stylesheet");
-    link.setAttribute("href", `chrome://${REF}/content/md.css`);
-    (doc.head || doc.documentElement)?.appendChild(link);
-  }
 }
 
 function q(body: HTMLElement, sel: string): HTMLElement {
@@ -405,6 +423,32 @@ function syncMessages(body: HTMLElement) {
     try { ztoolkit.log("syncMessages failed", e); } catch { /* ignore */ }
   }
   container.scrollTop = container.scrollHeight;
+  syncStatus();
+}
+
+/** Model + estimated context-usage chip in the context bar. */
+function syncStatus() {
+  try {
+    const el = state.statusEl;
+    if (!el) return;
+    const cfg = getConfig();
+    const model = cfg.model.trim();
+    if (!model || !state.itemID) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    const sys = itemContextSystem();
+    const outgoing = sys ? [sys, ...thread()] : [...thread()];
+    const text = outgoing.map((m) => m.content).join("\n") + (state.pending || "");
+    const tokens = estimateTokens(text);
+    const limit = Number(cfg.contextLimit) || 128000;
+    const pct = Math.min(100, Math.round((tokens / limit) * 100));
+    el.textContent = `${model} · ${tokens.toLocaleString()} / ${limit.toLocaleString()} tok · ${pct}%`;
+    el.hidden = false;
+  } catch {
+    /* status chip is optional */
+  }
 }
 
 /** Build a system message describing the currently selected item (if any). */
@@ -475,6 +519,7 @@ function wire(body: HTMLElement) {
   const sKey = q(body, `.${REF}-s-key`) as HTMLInputElement;
   const sModel = q(body, `.${REF}-s-model`) as HTMLInputElement;
   const sTemp = q(body, `.${REF}-s-temp`) as HTMLInputElement;
+  const sCtxLimit = q(body, `.${REF}-s-ctx-limit`) as HTMLInputElement;
   const sRefresh = q(body, `.${REF}-s-refresh`) as HTMLButtonElement;
   const sSave = q(body, `.${REF}-s-save`) as HTMLButtonElement;
   const sModels = body.querySelector(`#${REF}-models`) as HTMLDataListElement | null;
@@ -493,6 +538,8 @@ function wire(body: HTMLElement) {
   const ctxLabel = q(body, `.${REF}-ctx-label`) as HTMLElement;
   const ctxTitle = q(body, `.${REF}-ctx-title`) as HTMLElement;
   const ctxPage = q(body, `.${REF}-ctx-page`) as HTMLElement;
+  const ctxStatus = q(body, `.${REF}-ctx-status`) as HTMLElement;
+  state.statusEl = ctxStatus;
   const qSel = q(body, `.${REF}-q-sel`) as HTMLButtonElement;
   const qPage = q(body, `.${REF}-q-page`) as HTMLButtonElement;
   const qAnn = q(body, `.${REF}-q-ann`) as HTMLButtonElement;
@@ -601,6 +648,8 @@ function wire(body: HTMLElement) {
     sKey.value = cfg.secretKey;
     sModel.value = cfg.model;
     sTemp.value = String(cfg.temperature);
+    sTemp.value = String(cfg.temperature);
+    sCtxLimit.value = String(Number(cfg.contextLimit) || 128000);
     sApi.placeholder = "https://api.openai.com";
     sKey.placeholder = "sk-...";
     sModel.placeholder = "gpt-4o-mini";
@@ -644,6 +693,8 @@ function wire(body: HTMLElement) {
     getString("settings-model");
   (q(body, `.${REF}-lbl-temp`) as HTMLElement).textContent =
     getString("settings-temperature");
+  (q(body, `.${REF}-lbl-ctx-limit`) as HTMLElement).textContent =
+    getString("settings-context-limit");
   sRefresh.textContent = getString("settings-refresh");
   sSave.textContent = getString("settings-save");
   (q(body, `.${REF}-lbl-embed-enabled`) as HTMLElement).textContent =
@@ -900,6 +951,7 @@ function wire(body: HTMLElement) {
       secretKey: sKey.value.trim(),
       model: sModel.value.trim(),
       temperature: Number(sTemp.value) || 1,
+      contextLimit: Number(sCtxLimit.value) || 128000,
     });
     setEmbedConfig({
       enabled: eEnabled.checked,

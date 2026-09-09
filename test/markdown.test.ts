@@ -1,5 +1,5 @@
 import { assert } from "chai";
-import { escapeHtml, renderMarkdown, sanitizeHtml } from "../src/modules/markdown";
+import { escapeHtml, estimateTokens, renderMarkdown, sanitizeHtml } from "../src/modules/markdown";
 
 describe("markdown rendering", function () {
   it("renders markdown to sanitized HTML", function () {
@@ -26,5 +26,11 @@ describe("markdown rendering", function () {
 
   it("escapes plain text on render failure path", function () {
     assert.equal(escapeHtml("<b>&"), "&lt;b&gt;&amp;");
+  });
+
+  it("estimates tokens (latin chars/4, CJK ~1)", function () {
+    assert.equal(estimateTokens(""), 0);
+    assert.ok(estimateTokens("hello world this is a test") > 0);
+    assert.equal(estimateTokens("中文测试"), 4);
   });
 });

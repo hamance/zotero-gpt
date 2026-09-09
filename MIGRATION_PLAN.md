@@ -225,3 +225,13 @@ Sub-stage plan (each stage: build + tests green before commit):
 - `punycode` re-added as a dependency (markdown-it browser-bundle requirement).
 - Tests: `test/markdown.test.ts` (render/sanitize/escape); a panel e2e test streams a Markdown reply and asserts `.markdown-body` shows `<strong>`/`<code>` and the conversation is kept; an `innerHTML` round-trip probe documents that XHTML `innerHTML` works in the Zotero document. Test gotcha: `state.threads` is module-level and shared across tests (itemless tests share thread key 0), so the e2e assertion targets the **last** assistant bubble, not the first.
 - Gates: `npm run build` green; `npm test` → **51 passed**.
+
+### Stage 5g — compact Markdown + restore context chip (2026-09-10)
+- **Ask (user):** after 5f, "markdown 不够紧凑，挤压了 UI", the context-usage display was gone (removed by the 5e revert), and the Send button was no longer visible.
+- **Root cause for "Send button gone":** a long Markdown reply filled the fixed 420px message box and, together with the other rows, pushed the bottom input row past the visible item-pane area. The GitHub `md.css` stylesheet also made each block tall.
+- **Fix:**
+  - `panel.ts` drops the external `md.css` `<link>` and instead injects **compact, scoped `.markdown-body` rules** (13px, tight margins, small code/pre/table, `white-space:normal` so `pre-wrap` from `.msg` cannot distort layout, `min-width:0` + `overflow-wrap` so wide content cannot stretch the panel).
+  - `.zoterogpt-messages` max-height is now `45vh` (with `overscroll-behavior:contain`) so the input row + Send always stay visible; long replies scroll inside the box.
+  - **Context chip restored** (compact): `.zoterogpt-ctx-status` in the context bar shows `model · used / limit tok · %`, refreshed on every message sync; `contextLimit` pref (default 128000) is back with a Settings field; `estimateTokens` re-added to `markdown.ts`.
+- Tests: markdown `estimateTokens` case; panel e2e "model + context-usage chip"; settings test asserts `contextLimit` persistence.
+- Gates: `npm run build` green; `npm test` → **53 passed**.
