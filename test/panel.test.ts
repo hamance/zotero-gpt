@@ -416,6 +416,88 @@ describe("docked panel", function () {
       }
     }
   });
+
+  it("auto-attaches the PDF selection to the chat and sends it with the message", async function () {
+    provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
+    mockHttp("Attached reply");
+    const parent = new Zotero.Item("journalArticle");
+    parent.setField("title", "Attach Parent");
+    await parent.saveTx();
+    const openPDFID = 434343;
+    const origGetAttachments = (parent as any).getAttachments.bind(parent);
+    (parent as any).getAttachments = () => [openPDFID];
+    const selListeners: Record<string, any> = {};
+    const pdfWin: any = {
+      document: {
+        addEventListener: (name: string, fn: any) => {
+          selListeners[name] = fn;
+        },
+        removeEventListener: (name: string, fn: any) => {
+          if (selListeners[name] === fn) delete selListeners[name];
+        },
+      },
+      getSelection: () => ({ toString: () => "attached passage" }),
+      PDFViewerApplication: {
+        pdfViewer: { currentPageNumber: 1 },
+        pdfDocument: {
+          getPage: async () => ({ getTextContent: async () => ({ items: [{ str: "x" }] }) }),
+        },
+      },
+    };
+    const fakeReader: any = {
+      itemID: openPDFID,
+      _iframeWindow: {},
+      _internalReader: { _primaryView: { _iframeWindow: pdfWin } },
+    };
+    const prevReaders = (Zotero as any).Reader?._readers;
+    if (!(Zotero as any).Reader) (Zotero as any).Reader = {};
+    (Zotero as any).Reader._readers = [fakeReader];
+    try {
+      host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      doc.documentElement.appendChild(host);
+      api().renderPanel(host, parent.id);
+      const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+      const attachBar = panel.querySelector(`.${cls}-attach`) as HTMLElement;
+      const attachPreview = panel.querySelector(`.${cls}-attach-preview`) as HTMLElement;
+      const input = panel.querySelector("textarea") as HTMLTextAreaElement;
+      const send = panel.querySelector(`.${cls}-send`) as HTMLButtonElement;
+      // Simulate the user selecting text in the PDF -> auto-attach to chat.
+      selListeners.selectionchange?.();
+      await Zotero.Promise.delay(600);
+      assert.isFalse(attachBar.hidden, "attachment bar shown after a PDF selection");
+      assert.ok(
+        (attachPreview.textContent || "").includes("attached passage"),
+        "attached text preview",
+      );
+      // A typed question + the attached selection both flow into the message.
+      input.value = "explain this quote";
+      send.click();
+      await Zotero.Promise.delay(1200);
+      const bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+      const user = bubbles.find((b) => b.className.includes("user"));
+      assert.ok(user, "user bubble present");
+      assert.ok(
+        user && /attached passage/.test(user.textContent || ""),
+        "attached selection included in the user message",
+      );
+      assert.ok(
+        user && /explain this quote/.test(user.textContent || ""),
+        "typed text included in the user message",
+      );
+      assert.ok(
+        bubbles.some((b) => b.className.includes("assistant") && /Attached reply/.test(b.textContent || "")),
+        "reply streamed for the attached message",
+      );
+      assert.isTrue(attachBar.hidden, "attachment cleared after send");
+    } finally {
+      (parent as any).getAttachments = origGetAttachments;
+      if (prevReaders === undefined) {
+        delete (Zotero as any).Reader._readers;
+      } else {
+        (Zotero as any).Reader._readers = prevReaders;
+      }
+    }
+  });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);
   });

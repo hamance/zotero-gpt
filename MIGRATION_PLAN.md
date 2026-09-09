@@ -205,3 +205,14 @@ Sub-stage plan (each stage: build + tests green before commit):
 - **Fix (`src/modules/reader.ts`):** new `getIframes()` returns candidate windows in order — `_internalReader._primaryView._iframeWindow`, `_internalReader._secondaryView._iframeWindow`, then the legacy `_iframeWindow` — and `getPDFApp()` / `getSelectionText()` search them; `getIframe()` returns the first.
 - **Tests:** `test/reader.test.ts` fake reader now mirrors the real nested shape (host shell without pdf.js + nested primary-view iframe) and a second case covers the legacy `_iframeWindow` fallback; `test/panel.test.ts` end-to-end fake reader updated to the nested shape.
 - Gates: `npm run build` green; `npm test` → **43 passed**.
+
+### Stage 5c fix 3 — "Summarize page" still empty + selection auto-attach (2026-09-09)
+- **Symptom (user report):** "解释选中" and "总结批注" now work, but "总结本页" still returns nothing; also requested: selected PDF text should attach to the chat conversation directly, not only via buttons.
+- **Page-text root cause (verified in `resource/reader/pdf/web/viewer.mjs`):** the previous `getPageText()` relied solely on `pdfDocument.getPage(n).getTextContent()`, an async worker round-trip that can come back empty/unavailable for the current page. The already-rendered text layer (`pdfViewer.getPageView(n-1)._textHighlighter.textContentItemsStr`, an array of strings) is synchronous and always present once the page is rendered.
+- **Fix (`src/modules/reader.ts`):**
+  - `getPageText()` now reads the rendered text layer first, then falls back to `getTextContent()`; failures are logged via `ztoolkit.log`.
+  - `getCurrentPageNumber()` falls back to `pdfViewer._currentPageNumber` (the backing field) if the getter is hidden behind an Xray boundary; the panel's page button also prefers the eventBus-tracked `state.currentPage`.
+  - New `trackSelectionChanges()` subscribes to `selectionchange` on the pdf.js iframe document, debounced via `Zotero.Promise.delay`, and reports the trimmed selection.
+- **Feature (`src/modules/panel.ts`):** an attachment bar above the input shows the current PDF selection automatically as the user drags text (chip with preview + ✕). Pressing **Send** with an attachment sends it as quoted context together with any typed text, or as an "explain selection" request when the input is empty; the quick "解释选中" button consumes the same attachment. Cleanup happens on reader change, item switch, and unregister. FTL keys `pdf-attach-label` / `pdf-attach-remove` (en-US + zh-CN).
+- **Test-only gotchas fixed along the way:** XUL template attributes must be `hidden="hidden"` (a bare boolean `hidden` breaks `parseXULToFragment`, which silently unmounts the whole section); an injected test must not be nested inside the previous `it()` (mocha never registers it).
+- Gates: `npm run build` green; `npm test` → **45 passed**.

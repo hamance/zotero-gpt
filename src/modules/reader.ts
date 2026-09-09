@@ -98,7 +98,10 @@ export function getPDFApp(reader: any): any {
 /** Current 1-based page number (0 when unavailable). */
 export function getCurrentPageNumber(reader: any): number {
   try {
-    return Number(getPDFApp(reader)?.pdfViewer?.currentPageNumber) || 0;
+    const viewer = getPDFApp(reader)?.pdfViewer;
+    // Prefer the public getter; fall back to the backing field if the getter
+    // is hidden behind an Xray boundary.
+    return Number(viewer?.currentPageNumber ?? viewer?._currentPageNumber) || 0;
   } catch {
     return 0;
   }
@@ -119,8 +122,13 @@ export function getSelectionText(reader: any): string {
 }
 
 /**
- * Extract the text of one PDF page (1-based) via pdf.js getTextContent().
- * Whitespace is collapsed and the result truncated to `maxChars`.
+ * Extract the text of one PDF page (1-based).
+ *
+ * Preferred source: the already-rendered text layer
+ * (`pdfViewer.getPageView(n-1)._textHighlighter.textContentItemsStr`) which
+ * is synchronous and needs no worker round-trip. Fallback: pdf.js
+ * `getTextContent()`. Whitespace is collapsed; result truncated to
+ * `maxChars`.
  */
 export async function getPageText(
   reader: any,
@@ -129,6 +137,19 @@ export async function getPageText(
 ): Promise<string> {
   try {
     const app = getPDFApp(reader);
+    const viewer = app?.pdfViewer;
+    // Fast path: rendered text-layer strings for this page.
+    const pageView = viewer?.getPageView?.(pageNumber - 1);
+    const rendered = pageView?._textHighlighter?.textContentItemsStr;
+    if (Array.isArray(rendered) && rendered.length) {
+      const fast = (rendered as any[])
+        .filter((s) => typeof s === "string")
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (fast) return fast.slice(0, maxChars);
+    }
+    // Fallback: ask pdf.js for the page's text content.
     const doc = app?.pdfDocument;
     if (!doc || !pageNumber) return "";
     const page = await doc.getPage(pageNumber);
@@ -140,7 +161,12 @@ export async function getPageText(
       .replace(/\s+/g, " ")
       .trim();
     return text.slice(0, maxChars);
-  } catch {
+  } catch (e) {
+    try {
+      ztoolkit.log("getPageText failed", pageNumber, e);
+    } catch {
+      /* no logger available */
+    }
     return "";
   }
 }
@@ -239,6 +265,41 @@ export function navigateToPage(reader: any, pageNumber: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Subscribe to selection changes inside the pdf.js iframe; reports the
+ * current trimmed selection ("" when cleared) after a short debounce.
+ * Returns a cleanup function; safe no-op when the reader is unavailable.
+ */
+export function trackSelectionChanges(
+  reader: any,
+  onSelection: (text: string) => void,
+  debounceMs = 400,
+): () => void {
+  try {
+    const win = getIframes(reader)[0];
+    const doc = win?.document;
+    if (!doc || typeof doc.addEventListener !== "function") return () => {};
+    let token = 0;
+    const onChange = () => {
+      const myToken = ++token;
+      Zotero.Promise.delay(debounceMs).then(() => {
+        if (myToken === token) onSelection(getSelectionText(reader));
+      });
+    };
+    doc.addEventListener("selectionchange", onChange);
+    return () => {
+      token++; // cancels any pending debounced callback
+      try {
+        doc.removeEventListener("selectionchange", onChange);
+      } catch {
+        /* ignore */
+      }
+    };
+  } catch {
+    return () => {};
   }
 }
 

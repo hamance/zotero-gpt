@@ -38,6 +38,7 @@ import {
   navigateToPage,
   parsePageCommand,
   trackPageChanges,
+  trackSelectionChanges,
 } from "./reader";
 
 const REF = config.addonRef;
@@ -64,6 +65,9 @@ const state: {
   reader: any;
   currentPage: number;
   pageCleanup: (() => void) | null;
+  pdfAttach: string | null;
+  selectionCleanup: (() => void) | null;
+  selectionReader: any;
 } = {
   threads: new Map(),
   pending: "",
@@ -74,6 +78,9 @@ const state: {
   reader: null,
   currentPage: 0,
   pageCleanup: null,
+  pdfAttach: null,
+  selectionCleanup: null,
+  selectionReader: null,
 };
 
 /** Map key for the active thread (itemID, or 0 when no item is selected). */
@@ -240,6 +247,12 @@ const PANEL_CSS = `
 .${REF}-msg.user{align-self:flex-end;background:#e8f3ff;color:#0a2540;max-width:85%;}
 .${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:95%;}
 .${REF}-empty{color:#888;font-style:italic;padding:8px 4px;}
+.${REF}-attach{display:flex;gap:6px;align-items:center;border:1px dashed #c9c9c9;border-radius:6px;background:#f6f8fa;padding:4px 8px;font-size:12px;color:#444;min-width:0;}
+.${REF}-attach[hidden]{display:none;}
+.${REF}-attach-label{flex:none;color:#1f6feb;font-weight:600;white-space:nowrap;}
+.${REF}-attach-preview{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.${REF}-attach-x{flex:none;border:none;background:transparent;color:#888;cursor:pointer;font-size:13px;padding:0 2px;}
+.${REF}-attach-x:hover{color:#c00;}
 .${REF}-input-row{display:flex;gap:6px;align-items:flex-end;}
 .${REF}-actions{display:flex;gap:6px;flex-wrap:wrap;}
 .${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #c9c9c9;border-radius:6px;padding:6px 8px;font:inherit;}
@@ -313,6 +326,11 @@ const BODY_XHTML = `
   <html:div class="${REF}-actions">
     <html:button class="${REF}-btn ${REF}-a-export" type="button"></html:button>
     <html:button class="${REF}-btn ${REF}-a-note" type="button"></html:button>
+  </html:div>
+  <html:div class="${REF}-attach" hidden="hidden">
+    <html:span class="${REF}-attach-label"></html:span>
+    <html:span class="${REF}-attach-preview"></html:span>
+    <html:button class="${REF}-attach-x" type="button"></html:button>
   </html:div>
   <html:div class="${REF}-input-row">
     <html:textarea class="${REF}-input" rows="2"></html:textarea>
@@ -452,6 +470,10 @@ function wire(body: HTMLElement) {
   const qSel = q(body, `.${REF}-q-sel`) as HTMLButtonElement;
   const qPage = q(body, `.${REF}-q-page`) as HTMLButtonElement;
   const qAnn = q(body, `.${REF}-q-ann`) as HTMLButtonElement;
+  const attachBar = q(body, `.${REF}-attach`) as HTMLElement;
+  const attachLabel = q(body, `.${REF}-attach-label`) as HTMLElement;
+  const attachPreview = q(body, `.${REF}-attach-preview`) as HTMLElement;
+  const attachX = q(body, `.${REF}-attach-x`) as HTMLButtonElement;
 
   const getItemTitle = (): string => currentItemTitle();
 
@@ -465,6 +487,16 @@ function wire(body: HTMLElement) {
     const has = state.reader && state.currentPage > 0;
     ctxPage.textContent = has ? `p. ${state.currentPage}` : "";
     ctxPage.hidden = !has;
+  };
+
+  /** Show/hide the PDF-selection attachment bar above the input. */
+  const syncAttach = () => {
+    const has = !!state.pdfAttach;
+    attachBar.hidden = !has;
+    attachLabel.textContent = getString("pdf-attach-label");
+    attachX.textContent = "✕";
+    attachX.title = getString("pdf-attach-remove");
+    attachPreview.textContent = has ? state.pdfAttach : "";
   };
 
   /** Enable PDF quick actions when a reader is open for the current item. */
@@ -483,9 +515,23 @@ function wire(body: HTMLElement) {
           refreshPdfActions();
         });
       }
+      // Auto-attach PDF selections to the chat input as the user drags text.
+      if (state.selectionCleanup == null || state.selectionReader !== reader) {
+        state.selectionCleanup?.();
+        state.selectionCleanup = trackSelectionChanges(reader, (text) => {
+          state.pdfAttach = text || null;
+          syncAttach();
+        });
+        state.selectionReader = reader;
+      }
       syncPageLabel();
       stopReaderPoll();
     } else {
+      state.selectionCleanup?.();
+      state.selectionCleanup = null;
+      state.selectionReader = null;
+      state.pdfAttach = null;
+      syncAttach();
       syncPageLabel();
       // The reader registers asynchronously after a PDF opens; poll briefly
       // so the actions enable as soon as it is available.
@@ -606,6 +652,7 @@ function wire(body: HTMLElement) {
   syncMessages(body);
   refreshActions();
   refreshPdfActions();
+  syncAttach();
 
   if (panel.dataset.wired === "1") return;
   panel.dataset.wired = "1";
@@ -652,11 +699,24 @@ function wire(body: HTMLElement) {
     }
   };
 
-  const sendText = async (raw: string) => {
-    const text = (raw || "").trim();
+  const sendText = async (raw: string, attachPdf = false) => {
+    let text = (raw || "").trim();
     if (!text || state.busy) return;
 
     if (text.startsWith("/") && handleCommand(text)) return;
+
+    // Attach the currently selected PDF passage to this message (input Send
+    // only). With no typed text this becomes an "explain selection" request;
+    // with text it is added as quoted context.
+    if (attachPdf && state.pdfAttach) {
+      const attach = state.pdfAttach;
+      text = text
+        ? `${text}\n\n[${getString("pdf-attach-label")}]\n"""\n${attach}\n"""`
+        : buildSelectionMessage(attach) || text;
+      if (!text) return;
+      state.pdfAttach = null;
+      syncAttach();
+    }
 
     const cfg = getConfig();
     const problem = configError(cfg);
@@ -714,7 +774,7 @@ function wire(body: HTMLElement) {
   const onSend = async () => {
     const text = input.value.trim();
     input.value = "";
-    void sendText(text);
+    void sendText(text, true);
   };
 
   qSel.addEventListener("click", () => {
@@ -723,11 +783,13 @@ function wire(body: HTMLElement) {
       note(getString("pdf-no-open"));
       return;
     }
-    const msg = buildSelectionMessage(getSelectionText(r));
+    const msg = buildSelectionMessage(state.pdfAttach || getSelectionText(r));
     if (!msg) {
       note(getString("pdf-no-selection"));
       return;
     }
+    state.pdfAttach = null;
+    syncAttach();
     void sendText(msg);
   });
   qPage.addEventListener("click", async () => {
@@ -736,7 +798,7 @@ function wire(body: HTMLElement) {
       note(getString("pdf-no-open"));
       return;
     }
-    const page = getCurrentPageNumber(r);
+    const page = state.currentPage || getCurrentPageNumber(r);
     const text = await getPageText(r, page);
     const msg = buildPageMessage(page, text);
     if (!msg) {
@@ -759,6 +821,10 @@ function wire(body: HTMLElement) {
       return;
     }
     void sendText(msg);
+  });
+  attachX.addEventListener("click", () => {
+    state.pdfAttach = null;
+    syncAttach();
   });
   sSplit.addEventListener("click", () => {
     splitView();
@@ -907,8 +973,12 @@ export const ChatPanel = {
           state.pending = "";
           state.pageCleanup?.();
           state.pageCleanup = null;
+          state.selectionCleanup?.();
+          state.selectionCleanup = null;
+          state.selectionReader = null;
           state.reader = null;
           state.currentPage = 0;
+          state.pdfAttach = null;
           stopReaderPoll();
         }
         state.itemID = id;
@@ -957,6 +1027,7 @@ export const ChatPanel = {
           parsePageCommand,
           navigateToPage,
           trackPageChanges,
+          trackSelectionChanges,
         };
         inst.api.provider = {
           getConfig,
@@ -989,6 +1060,10 @@ export const ChatPanel = {
 
   unregister() {
     stopReaderPoll();
+    state.selectionCleanup?.();
+    state.selectionCleanup = null;
+    state.selectionReader = null;
+    state.pdfAttach = null;
     if (!sectionRegistered) return;
     Zotero.ItemPaneManager.unregisterSection(PANE_ID);
     sectionRegistered = false;

@@ -50,3 +50,6 @@ pdf-no-page-text = 当前页无可提取的文本。
 pdf-no-annotations = 该 PDF 暂无批注。
 pdf-page-goto = 已跳转到第
 pdf-page-invalid = 用法：/page <页码>
+
+pdf-attach-label = PDF 选中
+pdf-attach-remove = 移除选中

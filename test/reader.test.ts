@@ -10,6 +10,7 @@ import {
   navigateToPage,
   parsePageCommand,
   trackPageChanges,
+  trackSelectionChanges,
 } from "../src/modules/reader";
 
 describe("reader (PDF) linkage helpers", function () {
@@ -149,6 +150,37 @@ describe("reader (PDF) linkage helpers", function () {
     assert.isUndefined(listeners.pagechanging, "listener removed on cleanup");
     // Unavailable reader -> safe no-op
     assert.isFunction(trackPageChanges(null as any, () => {}));
+  });
+
+  it("tracks selection changes in the pdf.js iframe and cleans up", async function () {
+    const listeners: Record<string, any> = {};
+    const doc: any = {
+      addEventListener: (name: string, fn: any) => {
+        listeners[name] = fn;
+      },
+      removeEventListener: (name: string, fn: any) => {
+        if (listeners[name] === fn) delete listeners[name];
+      },
+    };
+    const reader: any = {
+      _iframeWindow: {}, // host shell has no pdf.js
+      _internalReader: {
+        _primaryView: {
+          _iframeWindow: {
+            document: doc,
+            getSelection: () => ({ toString: () => "auto attached words" }),
+          },
+        },
+      },
+    };
+    const seen: string[] = [];
+    const cleanup = trackSelectionChanges(reader, (t) => seen.push(t));
+    listeners.selectionchange?.();
+    await Zotero.Promise.delay(600);
+    assert.deepEqual(seen, ["auto attached words"]);
+    cleanup();
+    assert.isUndefined(listeners.selectionchange, "listener removed on cleanup");
+    assert.isFunction(trackSelectionChanges(null as any, () => {}));
   });
 });
 

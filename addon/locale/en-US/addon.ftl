@@ -50,3 +50,6 @@ pdf-no-page-text = No page text available for the current page.
 pdf-no-annotations = No annotations found on this PDF.
 pdf-page-goto = Jumped to page
 pdf-page-invalid = Usage: /page <number>
+
+pdf-attach-label = PDF selection
+pdf-attach-remove = Remove selection
