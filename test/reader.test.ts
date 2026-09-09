@@ -73,18 +73,25 @@ describe("reader (PDF) linkage helpers", function () {
       (parent as any).getAttachments = orig;
     }
   });
-  it("reads current page / selection / page text from a fake pdf.js reader", async function () {
+  it("reads page/selection/text from the nested pdf.js iframe (real Zotero shape)", async function () {
+    // Real Zotero 7+ reader: the host _iframeWindow has no pdf.js; the viewer
+    // and selection live in _internalReader._primaryView._iframeWindow.
     const reader: any = {
-      _iframeWindow: {
-        getSelection: () => ({ toString: () => "selected words" }),
-        PDFViewerApplication: {
-          pdfViewer: { currentPageNumber: 7 },
-          pdfDocument: {
-            getPage: async (n: number) => ({
-              getTextContent: async () => ({
-                items: [{ str: "Hello" }, { str: " " }, { str: "world" }],
-              }),
-            }),
+      _iframeWindow: { getSelection: () => ({ toString: () => "" }) },
+      _internalReader: {
+        _primaryView: {
+          _iframeWindow: {
+            getSelection: () => ({ toString: () => "selected words" }),
+            PDFViewerApplication: {
+              pdfViewer: { currentPageNumber: 7 },
+              pdfDocument: {
+                getPage: async (n: number) => ({
+                  getTextContent: async () => ({
+                    items: [{ str: "Hello" }, { str: " " }, { str: "world" }],
+                  }),
+                }),
+              },
+            },
           },
         },
       },
@@ -94,6 +101,18 @@ describe("reader (PDF) linkage helpers", function () {
     assert.equal(await getPageText(reader, 7), "Hello world");
     assert.equal(await getPageText(reader, 0), "");
     assert.equal(await getPageText(reader, 7, 5), "Hello");
+  });
+
+  it("falls back to the legacy host iframe when the nested view is absent", function () {
+    const reader: any = {
+      _iframeWindow: {
+        getSelection: () => ({ toString: () => "legacy words" }),
+        PDFViewerApplication: { pdfViewer: { currentPageNumber: 3 } },
+      },
+    };
+    assert.equal(getCurrentPageNumber(reader), 3);
+    assert.equal(getSelectionText(reader), "legacy words");
+    assert.equal(getSelectionText({}), "");
   });
 
   it("navigates to a 1-based page", function () {

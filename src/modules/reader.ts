@@ -52,19 +52,44 @@ function relatedItemIDs(itemID: number): Set<number> {
   return ids;
 }
 
-/** The reader's iframe window (pdf.js host), or null. */
-export function getIframe(reader: any): Window | null {
+/**
+ * Candidate windows that may host the pdf.js viewer / text selection.
+ *
+ * In Zotero 7+ the reader is nested: `reader._iframeWindow` is the reader
+ * host shell, while the actual pdf.js viewer (with `PDFViewerApplication`
+ * and the text selection) lives in the primary/secondary view iframe
+ * (`reader._internalReader._primaryView._iframeWindow`). Return the most
+ * specific first, with the legacy host iframe as a fallback.
+ */
+function getIframes(reader: any): Window[] {
+  const out: Window[] = [];
+  const push = (w: any) => {
+    if (w && typeof w === "object") out.push(w);
+  };
   try {
-    return reader?._iframeWindow ?? null;
+    const internal = reader?._internalReader;
+    push(internal?._primaryView?._iframeWindow);
+    push(internal?._secondaryView?._iframeWindow);
+    push(reader?._iframeWindow);
   } catch {
-    return null;
+    /* keep whatever we collected */
   }
+  return out;
+}
+
+/** The pdf.js viewer iframe window, or null. */
+export function getIframe(reader: any): Window | null {
+  return getIframes(reader)[0] ?? null;
 }
 
 /** The pdf.js `PDFViewerApplication` inside the reader iframe, or null. */
 export function getPDFApp(reader: any): any {
   try {
-    return (getIframe(reader) as any)?.PDFViewerApplication ?? null;
+    for (const win of getIframes(reader)) {
+      const app = (win as any)?.PDFViewerApplication;
+      if (app) return app;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -82,9 +107,12 @@ export function getCurrentPageNumber(reader: any): number {
 /** Text currently selected in the PDF (empty string when none). */
 export function getSelectionText(reader: any): string {
   try {
-    const win = getIframe(reader);
-    const sel = win?.getSelection?.();
-    return sel ? String(sel.toString() || "").trim() : "";
+    for (const win of getIframes(reader)) {
+      const sel = win?.getSelection?.();
+      const text = sel ? String(sel.toString() || "").trim() : "";
+      if (text) return text;
+    }
+    return "";
   } catch {
     return "";
   }

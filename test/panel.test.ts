@@ -364,14 +364,19 @@ describe("docked panel", function () {
     (parent as any).getAttachments = () => [openPDFID];
     const fakeReader: any = {
       itemID: openPDFID,
-      _iframeWindow: {
-        getSelection: () => ({ toString: () => "selected phrase" }),
-        PDFViewerApplication: {
-          pdfViewer: { currentPageNumber: 2 },
-          pdfDocument: {
-            getPage: async () => ({
-              getTextContent: async () => ({ items: [{ str: "page text" }] }),
-            }),
+      _iframeWindow: {}, // host shell: no pdf.js here in real Zotero
+      _internalReader: {
+        _primaryView: {
+          _iframeWindow: {
+            getSelection: () => ({ toString: () => "selected phrase" }),
+            PDFViewerApplication: {
+              pdfViewer: { currentPageNumber: 2 },
+              pdfDocument: {
+                getPage: async () => ({
+                  getTextContent: async () => ({ items: [{ str: "page text" }] }),
+                }),
+              },
+            },
           },
         },
       },
