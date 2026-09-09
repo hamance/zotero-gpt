@@ -2,6 +2,17 @@ import { assert } from "chai";
 import { config } from "../package.json";
 
 describe("docked panel", function () {
+  it("can round-trip innerHTML on an XHTML element in the Zotero document", function () {
+    const probe = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(probe);
+    try {
+      probe.innerHTML = "<p><strong>Bold</strong> and <code>code</code></p>";
+      assert.include(probe.innerHTML, "<strong>Bold</strong>", "innerHTML renders strong");
+      assert.include(probe.innerHTML, "<code>code</code>", "innerHTML renders code");
+    } finally {
+      probe.remove();
+    }
+  });
   this.timeout(45000);
   const cls = config.addonRef;
   const win: any = Zotero.getMainWindow();
@@ -497,6 +508,32 @@ describe("docked panel", function () {
         (Zotero as any).Reader._readers = prevReaders;
       }
     }
+  });
+
+  it("renders assistant replies as Markdown and keeps the conversation visible", async function () {
+    provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
+    mockHttp("**Bold** reply with `code`");
+    host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(host);
+    api().renderPanel(host);
+    const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+    const input = panel.querySelector("textarea") as HTMLTextAreaElement;
+    const send = panel.querySelector(`.${cls}-send`) as HTMLButtonElement;
+    input.value = "format please";
+    send.click();
+    await Zotero.Promise.delay(1400);
+    const bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+    const assistants = bubbles.filter((b) => b.className.includes("assistant"));
+    const assistant = assistants[assistants.length - 1]; // last = the current reply (threads persist per item in module state)
+    assert.ok(assistant, "assistant bubble present after streaming");
+    const md = assistant?.querySelector(".markdown-body") as HTMLElement | null;
+    assert.ok(md, "assistant reply rendered inside .markdown-body");
+    assert.include(md?.innerHTML || "", "<strong>Bold</strong>", "markdown bold rendered");
+    assert.include(md?.innerHTML || "", "<code>code</code>", "markdown code rendered");
+    assert.ok(
+      bubbles.some((b) => b.className.includes("user") && /format please/.test(b.textContent || "")),
+      "user message kept beside the rendered reply",
+    );
   });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);

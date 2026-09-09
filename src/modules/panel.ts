@@ -1,5 +1,6 @@
 import { config } from "../../package.json";
 import { getLocaleID, getString } from "../utils/locale";
+import { renderMarkdown } from "./markdown";
 import {
   ChatMessage,
   ChatStream,
@@ -344,6 +345,14 @@ function registerStyles(doc: Document) {
   style.setAttribute("id", STYLE_ID);
   style.textContent = PANEL_CSS;
   doc.documentElement?.appendChild(style);
+  // GitHub-style markdown rendering, scoped to .markdown-body only.
+  if (!doc.getElementById(`${STYLE_ID}-md`)) {
+    const link = doc.createElementNS(XHTML, "link");
+    link.setAttribute("id", `${STYLE_ID}-md`);
+    link.setAttribute("rel", "stylesheet");
+    link.setAttribute("href", `chrome://${REF}/content/md.css`);
+    (doc.head || doc.documentElement)?.appendChild(link);
+  }
 }
 
 function q(body: HTMLElement, sel: string): HTMLElement {
@@ -353,30 +362,47 @@ function q(body: HTMLElement, sel: string): HTMLElement {
 function syncMessages(body: HTMLElement) {
   const container = q(body, `.${REF}-messages`);
   if (!container) return;
-  container.textContent = "";
   const doc = body.ownerDocument;
   if (!doc) return;
-  if (thread().length === 0 && !state.pending) {
-    const empty = doc.createElementNS(XHTML, "div");
-    empty.setAttribute("class", `${REF}-empty`);
-    empty.textContent = getString("panel-empty");
-    container.appendChild(empty);
-    return;
-  }
-  for (const m of thread()) {
+  // Build the whole list off-DOM first, then swap it in only on success, so
+  // a render hiccup can never wipe previously shown messages.
+  const frag = doc.createDocumentFragment();
+  const bubble = (role: string, content: string) => {
     const b = doc.createElementNS(XHTML, "div");
-    b.setAttribute(
-      "class",
-      `${REF}-msg ${m.role === "user" ? "user" : "assistant"}`,
-    );
-    b.textContent = m.content;
-    container.appendChild(b);
-  }
-  if (state.pending) {
-    const b = doc.createElementNS(XHTML, "div");
-    b.setAttribute("class", `${REF}-msg assistant`);
-    b.textContent = state.pending;
-    container.appendChild(b);
+    b.setAttribute("class", `${REF}-msg ${role}`);
+    if (role === "user") {
+      b.textContent = content;
+    } else {
+      const inner = doc.createElementNS(XHTML, "div");
+      inner.setAttribute("class", "markdown-body");
+      try {
+        inner.innerHTML = renderMarkdown(content);
+      } catch {
+        inner.textContent = content;
+      }
+      b.appendChild(inner);
+    }
+    return b;
+  };
+  try {
+    if (thread().length === 0 && !state.pending) {
+      const empty = doc.createElementNS(XHTML, "div");
+      empty.setAttribute("class", `${REF}-empty`);
+      empty.textContent = getString("panel-empty");
+      frag.appendChild(empty);
+    } else {
+      for (const m of thread()) {
+        frag.appendChild(bubble(m.role === "user" ? "user" : "assistant", m.content));
+      }
+      if (state.pending) {
+        frag.appendChild(bubble("assistant", state.pending));
+      }
+    }
+    container.textContent = "";
+    container.appendChild(frag);
+  } catch (e) {
+    // Keep whatever is already visible; never blank the conversation.
+    try { ztoolkit.log("syncMessages failed", e); } catch { /* ignore */ }
   }
   container.scrollTop = container.scrollHeight;
 }
