@@ -11,6 +11,9 @@ The modernization branch is `dev/zetoro-10`; the staged plan and test log live i
 - **PDF ↔ chat linkage** — quick actions **解释选中 / 总结本页 / 总结批注** pull the current PDF selection, page text or annotations into the chat (per-item context), a live `p. N` indicator tracks the page you are on, and `/page N` jumps the reader to a page. Selecting text in the PDF also **auto-attaches it to the chat** (a chip above the input; pressing Send includes it as quoted context, or sends an explain request when the input is empty).
 - **Any OpenAI-compatible chat provider** — set your own base URL, model, API key, temperature. A blank key means *no `Authorization` header*, so local servers (Ollama, LM Studio) work out of the box.
 - **Streaming replies with Stop** — type a question and press `Enter`; press `Enter` again (or click Stop) to cancel a running reply.
+- **Markdown replies** — assistant messages render Markdown (headings, lists, code, tables, math via `markdown-it`); raw HTML and dangerous links are sanitized.
+- **Dock-like chat panel** — the chat is a self-contained scroll area: wheeling inside the chat scrolls the messages, not the item pane, so it never jumps between items/sections.
+- **Model & context chip** — the context bar shows `model · usage / contextLimit tok · %`, and the context window (tokens) is configurable in Settings.
 - **Per-item context threads** — each item/PDF keeps its own conversation; switching items switches threads (a context bar shows the active item), and the selected item's title/authors/date/abstract are attached so the model answers about that paper.
 - **Settings UI** (open by default on first run):
   - *Chat*: base URL, API key, model (with refresh-from-`/v1/models`), temperature.

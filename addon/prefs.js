@@ -15,3 +15,4 @@ pref("relatedNumber", 5);
 pref("embeddingBatchNum", 10);
 pref("deltaTime", 100);
 pref("tags", "[]");
+pref("contextLimit", 128000);

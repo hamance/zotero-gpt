@@ -1,5 +1,6 @@
 import { config } from "../../package.json";
 import { getLocaleID, getString } from "../utils/locale";
+import { estimateTokens, renderMarkdown } from "./markdown";
 import {
   ChatMessage,
   ChatStream,
@@ -68,6 +69,7 @@ const state: {
   pdfAttach: string | null;
   selectionCleanup: (() => void) | null;
   selectionReader: any;
+  statusEl: HTMLElement | null;
 } = {
   threads: new Map(),
   pending: "",
@@ -81,6 +83,7 @@ const state: {
   pdfAttach: null,
   selectionCleanup: null,
   selectionReader: null,
+  statusEl: null,
 };
 
 /** Map key for the active thread (itemID, or 0 when no item is selected). */
@@ -210,19 +213,21 @@ function bump(key: string) {
 }
 
 const PANEL_CSS = `
-.${REF}-panel{display:flex;flex-direction:column;gap:8px;padding:8px;font-size:13px;min-width:0;}
-.${REF}-topbar{display:flex;flex-direction:column;gap:4px;}
-.${REF}-s-toggle{align-self:flex-start;border:1px solid #c9c9c9;border-radius:6px;background:#f7f7f7;color:#333;padding:3px 10px;cursor:pointer;font:inherit;}
+.${REF}-panel{display:flex;flex-direction:column;gap:10px;padding:10px;font-size:14px;min-width:0;}
+.${REF}-topbar{display:flex;flex-direction:column;gap:6px;}
+.${REF}-s-toggle{align-self:flex-start;border:1px solid #c9c9c9;border-radius:8px;background:#f7f7f7;color:#333;padding:6px 14px;cursor:pointer;font:inherit;font-size:13px;}
 .${REF}-s-toggle:hover{background:#ececec;}
 .${REF}-hint{color:#9a6700;background:#fff8c5;border:1px solid #e0c366;border-radius:6px;padding:4px 8px;font-size:12px;}
 .${REF}-hint[hidden]{display:none;}
 .${REF}-top-row{display:flex;gap:6px;align-items:center;}
 .${REF}-s-split{border:1px solid #c9c9c9;border-radius:6px;background:#f7f7f7;color:#333;padding:3px 10px;cursor:pointer;font:inherit;}
 .${REF}-s-split:hover{background:#ececec;}
-.${REF}-ctx{display:flex;gap:6px;align-items:center;font-size:12px;color:#555;background:#f6f8fa;border:1px solid #e2e2e2;border-radius:6px;padding:4px 8px;min-width:0;}
+.${REF}-ctx{display:flex;gap:8px;align-items:center;font-size:13px;color:#555;background:#f6f8fa;border:1px solid #e2e2e2;border-radius:8px;padding:6px 10px;min-width:0;flex-wrap:wrap;}
 .${REF}-ctx-label{color:#888;flex:none;}
-.${REF}-ctx-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
-.${REF}-ctx-page{color:#1a7f37;background:#e6f4ea;border-radius:10px;padding:0 6px;font-size:11px;flex:none;}
+.${REF}-ctx-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;flex:1;min-width:0;}
+.${REF}-ctx-page{color:#1a7f37;background:#e6f4ea;border-radius:10px;padding:1px 8px;font-size:12px;flex:none;}
+.${REF}-ctx-status{color:#57606a;background:#eef1f4;border:1px solid #dfe3e8;border-radius:10px;padding:1px 8px;font-size:12px;flex:none;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.${REF}-ctx-status[hidden]{display:none;}
 .${REF}-pdf-actions{display:flex;gap:6px;flex-wrap:wrap;}
 .${REF}-settings{display:flex;flex-direction:column;gap:8px;border:1px solid #e0e0e0;border-radius:8px;padding:8px;background:#fafafa;}
 .${REF}-settings[hidden]{display:none;}
@@ -234,7 +239,7 @@ const PANEL_CSS = `
 .${REF}-settings input[type=text],.${REF}-settings input[type=password],.${REF}-settings input:not([type]),.${REF}-settings select,.${REF}-settings input[type=number]{border:1px solid #c9c9c9;border-radius:6px;padding:4px 6px;font:inherit;background:#fff;color:#222;}
 .${REF}-row-inline{display:flex;gap:6px;align-items:center;}
 .${REF}-row-inline .${REF}-s-model,.${REF}-row-inline .${REF}-e-model{flex:1;}
-.${REF}-btn{border:1px solid #c9c9c9;border-radius:6px;padding:4px 10px;background:#fff;color:#333;cursor:pointer;font:inherit;white-space:nowrap;}
+.${REF}-btn{border:1px solid #c9c9c9;border-radius:8px;padding:6px 12px;background:#fff;color:#333;cursor:pointer;font:inherit;white-space:nowrap;font-size:13px;}
 .${REF}-btn:hover{background:#f0f0f0;}
 .${REF}-btn[disabled]{opacity:.55;cursor:default;}
 .${REF}-s-save{border:none;border-radius:6px;padding:5px 16px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;align-self:flex-end;}
@@ -242,10 +247,17 @@ const PANEL_CSS = `
 .${REF}-e-status{font-size:12px;color:#333;min-height:16px;}
 .${REF}-e-status.ok{color:#1a7f37;}
 .${REF}-e-status.err{color:#cf222e;}
-.${REF}-messages{display:flex;flex-direction:column;gap:6px;min-height:110px;max-height:420px;overflow-y:auto;background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:6px;}
-.${REF}-msg{padding:6px 8px;border-radius:8px;white-space:pre-wrap;word-wrap:break-word;line-height:1.4;}
+.${REF}-messages{display:flex;flex-direction:column;gap:8px;min-height:300px;max-height:60vh;overflow-y:auto;overscroll-behavior:contain;background:#fff;border:1px solid #e2e2e2;border-radius:10px;padding:10px;}
+.${REF}-msg{padding:8px 12px;border-radius:10px;white-space:pre-wrap;word-wrap:break-word;line-height:1.55;font-size:14px;}
 .${REF}-msg.user{align-self:flex-end;background:#e8f3ff;color:#0a2540;max-width:85%;}
-.${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:95%;}
+.${REF}-msg.assistant{align-self:flex-start;background:#f4f4f5;max-width:100%;min-width:0;}
+.${REF}-msg .markdown-body{font-size:14px;line-height:1.55;color:#24292f;}
+.${REF}-msg .markdown-body pre{background:#f6f8fa;border:1px solid #e2e2e2;border-radius:8px;padding:10px;overflow-x:auto;white-space:pre;}
+.${REF}-msg .markdown-body code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;background:rgba(175,184,193,.2);border-radius:4px;padding:1px 4px;}
+.${REF}-msg .markdown-body pre code{background:none;padding:0;}
+.${REF}-msg .markdown-body table{border-collapse:collapse;margin:8px 0;display:block;overflow-x:auto;}
+.${REF}-msg .markdown-body th,.${REF}-msg .markdown-body td{border:1px solid #d0d7de;padding:5px 10px;}
+.${REF}-msg .markdown-body a{color:#0969da;text-decoration:underline;}
 .${REF}-empty{color:#888;font-style:italic;padding:8px 4px;}
 .${REF}-attach{display:flex;gap:6px;align-items:center;border:1px dashed #c9c9c9;border-radius:6px;background:#f6f8fa;padding:4px 8px;font-size:12px;color:#444;min-width:0;}
 .${REF}-attach[hidden]{display:none;}
@@ -255,8 +267,9 @@ const PANEL_CSS = `
 .${REF}-attach-x:hover{color:#c00;}
 .${REF}-input-row{display:flex;gap:6px;align-items:flex-end;}
 .${REF}-actions{display:flex;gap:6px;flex-wrap:wrap;}
-.${REF}-input{flex:1;resize:vertical;min-height:38px;max-height:160px;border:1px solid #c9c9c9;border-radius:6px;padding:6px 8px;font:inherit;}
-.${REF}-send{border:none;border-radius:6px;padding:8px 16px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;}
+.${REF}-input{flex:1;resize:vertical;min-height:64px;max-height:200px;border:1px solid #c9c9c9;border-radius:8px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.5;}
+.${REF}-input:focus{outline:none;border-color:#1f6feb;box-shadow:0 0 0 2px rgba(31,111,235,.2);}
+.${REF}-send{border:none;border-radius:8px;padding:12px 20px;background:#1f6feb;color:#fff;cursor:pointer;font:inherit;font-size:14px;font-weight:600;}
 .${REF}-send[disabled]{opacity:.5;cursor:default;}
 `;
 
@@ -282,6 +295,7 @@ const BODY_XHTML = `
       </html:label>
       <html:datalist id="${REF}-models"></html:datalist>
       <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-temp"></html:span><html:input class="${REF}-s-temp" type="number" step="0.1" min="0" max="2" /></html:label>
+      <html:label class="${REF}-field"><html:span class="${REF}-lbl ${REF}-lbl-ctx-limit"></html:span><html:input class="${REF}-s-ctx-limit" type="number" step="1000" min="0" /></html:label>
     </html:div>
     <html:div class="${REF}-group">
       <html:div class="${REF}-group-title ${REF}-lbl-embed"></html:div>
@@ -316,6 +330,7 @@ const BODY_XHTML = `
     <html:span class="${REF}-ctx-label"></html:span>
     <html:span class="${REF}-ctx-title"></html:span>
     <html:span class="${REF}-ctx-page"></html:span>
+    <html:span class="${REF}-ctx-status" hidden="hidden"></html:span>
   </html:div>
   <html:div class="${REF}-messages"></html:div>
   <html:div class="${REF}-pdf-actions">
@@ -333,7 +348,7 @@ const BODY_XHTML = `
     <html:button class="${REF}-attach-x" type="button"></html:button>
   </html:div>
   <html:div class="${REF}-input-row">
-    <html:textarea class="${REF}-input" rows="2"></html:textarea>
+    <html:textarea class="${REF}-input" rows="3"></html:textarea>
     <html:button class="${REF}-send" type="button"></html:button>
   </html:div>
 </html:div>`;
@@ -344,6 +359,13 @@ function registerStyles(doc: Document) {
   style.setAttribute("id", STYLE_ID);
   style.textContent = PANEL_CSS;
   doc.documentElement?.appendChild(style);
+  if (!doc.getElementById(`${STYLE_ID}-md`)) {
+    const link = doc.createElementNS(XHTML, "link");
+    link.setAttribute("id", `${STYLE_ID}-md`);
+    link.setAttribute("rel", "stylesheet");
+    link.setAttribute("href", `chrome://${REF}/content/md.css`);
+    (doc.head || doc.documentElement)?.appendChild(link);
+  }
 }
 
 function q(body: HTMLElement, sel: string): HTMLElement {
@@ -353,6 +375,7 @@ function q(body: HTMLElement, sel: string): HTMLElement {
 function syncMessages(body: HTMLElement) {
   const container = q(body, `.${REF}-messages`);
   if (!container) return;
+  syncStatus();
   container.textContent = "";
   const doc = body.ownerDocument;
   if (!doc) return;
@@ -365,20 +388,57 @@ function syncMessages(body: HTMLElement) {
   }
   for (const m of thread()) {
     const b = doc.createElementNS(XHTML, "div");
+    const isUser = m.role === "user";
     b.setAttribute(
       "class",
-      `${REF}-msg ${m.role === "user" ? "user" : "assistant"}`,
+      `${REF}-msg ${isUser ? "user" : "assistant"}`,
     );
-    b.textContent = m.content;
+    if (isUser) {
+      b.textContent = m.content;
+    } else {
+      const inner = doc.createElementNS(XHTML, "div");
+      inner.setAttribute("class", "markdown-body");
+      inner.innerHTML = renderMarkdown(m.content);
+      b.appendChild(inner);
+    }
     container.appendChild(b);
   }
   if (state.pending) {
     const b = doc.createElementNS(XHTML, "div");
     b.setAttribute("class", `${REF}-msg assistant`);
-    b.textContent = state.pending;
+    const inner = doc.createElementNS(XHTML, "div");
+    inner.setAttribute("class", "markdown-body");
+    inner.innerHTML = renderMarkdown(state.pending);
+    b.appendChild(inner);
     container.appendChild(b);
   }
   container.scrollTop = container.scrollHeight;
+  syncStatus();
+}
+
+/** Model + estimated context-usage chip in the context bar. */
+function syncStatus() {
+  try {
+    const el = state.statusEl;
+    if (!el) return;
+    const cfg = getConfig();
+    const model = cfg.model.trim();
+    if (!model || !state.itemID) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    const sys = itemContextSystem();
+    const outgoing = sys ? [sys, ...thread()] : [...thread()];
+    const text = outgoing.map((m) => m.content).join("\n") + (state.pending || "");
+    const tokens = estimateTokens(text);
+    const limit = Number(cfg.contextLimit) || 128000;
+    const pct = Math.min(100, Math.round((tokens / limit) * 100));
+    el.textContent = `${model} · ${tokens.toLocaleString()} / ${limit.toLocaleString()} tok · ${pct}%`;
+    el.hidden = false;
+  } catch {
+    /* status chip is optional */
+  }
 }
 
 /** Build a system message describing the currently selected item (if any). */
@@ -449,6 +509,7 @@ function wire(body: HTMLElement) {
   const sKey = q(body, `.${REF}-s-key`) as HTMLInputElement;
   const sModel = q(body, `.${REF}-s-model`) as HTMLInputElement;
   const sTemp = q(body, `.${REF}-s-temp`) as HTMLInputElement;
+  const sCtxLimit = q(body, `.${REF}-s-ctx-limit`) as HTMLInputElement;
   const sRefresh = q(body, `.${REF}-s-refresh`) as HTMLButtonElement;
   const sSave = q(body, `.${REF}-s-save`) as HTMLButtonElement;
   const sModels = body.querySelector(`#${REF}-models`) as HTMLDataListElement | null;
@@ -467,6 +528,8 @@ function wire(body: HTMLElement) {
   const ctxLabel = q(body, `.${REF}-ctx-label`) as HTMLElement;
   const ctxTitle = q(body, `.${REF}-ctx-title`) as HTMLElement;
   const ctxPage = q(body, `.${REF}-ctx-page`) as HTMLElement;
+  const ctxStatus = q(body, `.${REF}-ctx-status`) as HTMLElement;
+  state.statusEl = ctxStatus;
   const qSel = q(body, `.${REF}-q-sel`) as HTMLButtonElement;
   const qPage = q(body, `.${REF}-q-page`) as HTMLButtonElement;
   const qAnn = q(body, `.${REF}-q-ann`) as HTMLButtonElement;
@@ -498,6 +561,8 @@ function wire(body: HTMLElement) {
     attachX.title = getString("pdf-attach-remove");
     attachPreview.textContent = has ? state.pdfAttach : "";
   };
+
+
 
   /** Enable PDF quick actions when a reader is open for the current item. */
   const refreshPdfActions = () => {
@@ -575,6 +640,7 @@ function wire(body: HTMLElement) {
     sKey.value = cfg.secretKey;
     sModel.value = cfg.model;
     sTemp.value = String(cfg.temperature);
+    sCtxLimit.value = String(Number(cfg.contextLimit) || 128000);
     sApi.placeholder = "https://api.openai.com";
     sKey.placeholder = "sk-...";
     sModel.placeholder = "gpt-4o-mini";
@@ -618,6 +684,8 @@ function wire(body: HTMLElement) {
     getString("settings-model");
   (q(body, `.${REF}-lbl-temp`) as HTMLElement).textContent =
     getString("settings-temperature");
+  (q(body, `.${REF}-lbl-ctx-limit`) as HTMLElement).textContent =
+    getString("settings-context-limit");
   sRefresh.textContent = getString("settings-refresh");
   sSave.textContent = getString("settings-save");
   (q(body, `.${REF}-lbl-embed-enabled`) as HTMLElement).textContent =
@@ -656,6 +724,16 @@ function wire(body: HTMLElement) {
 
   if (panel.dataset.wired === "1") return;
   panel.dataset.wired = "1";
+
+  // Treat the chat as its own scroll island: wheel events over the panel must
+  // never bubble to the item pane (which would scroll it / switch sections).
+  panel.addEventListener(
+    "wheel",
+    (e: Event) => {
+      e.stopPropagation();
+    },
+    { passive: true },
+  );
 
   const handleCommand = (raw: string): boolean => {
     const parts = raw.trim().split(/\s+/);
@@ -874,6 +952,7 @@ function wire(body: HTMLElement) {
       secretKey: sKey.value.trim(),
       model: sModel.value.trim(),
       temperature: Number(sTemp.value) || 1,
+      contextLimit: Number(sCtxLimit.value) || 128000,
     });
     setEmbedConfig({
       enabled: eEnabled.checked,

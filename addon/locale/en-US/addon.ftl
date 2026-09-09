@@ -53,3 +53,5 @@ pdf-page-invalid = Usage: /page <number>
 
 pdf-attach-label = PDF selection
 pdf-attach-remove = Remove selection
+
+settings-context-limit = Context length (tokens)

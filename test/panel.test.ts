@@ -136,19 +136,21 @@ describe("docked panel", function () {
     const sKey = panel.querySelector(`.${cls}-s-key`) as HTMLInputElement;
     const sModel = panel.querySelector(`.${cls}-s-model`) as HTMLInputElement;
     const sTemp = panel.querySelector(`.${cls}-s-temp`) as HTMLInputElement;
+    const sCtxLimit = panel.querySelector(`.${cls}-s-ctx-limit`) as HTMLInputElement;
     const eEnabled = panel.querySelector(`.${cls}-e-enabled`) as HTMLInputElement;
     const eApi = panel.querySelector(`.${cls}-e-api`) as HTMLInputElement;
     const eKey = panel.querySelector(`.${cls}-e-key`) as HTMLInputElement;
     const eModel = panel.querySelector(`.${cls}-e-model`) as HTMLInputElement;
     const eType = panel.querySelector(`.${cls}-e-type`) as HTMLSelectElement;
     const eDim = panel.querySelector(`.${cls}-e-dim`) as HTMLInputElement;
-    assert.ok(sApi && sKey && sModel && sTemp, "chat settings fields rendered");
+    assert.ok(sApi && sKey && sModel && sTemp && sCtxLimit, "chat settings fields rendered");
     assert.ok(eEnabled && eApi && eKey && eModel && eType && eDim, "embedding settings fields rendered");
 
     sApi.value = "https://my.proxy/v1";
     sKey.value = "sk-123";
     sModel.value = "my-model";
     sTemp.value = "0.3";
+    sCtxLimit.value = "32000";
     eEnabled.checked = true;
     eApi.value = "http://localhost:11434";
     eKey.value = "";
@@ -162,6 +164,7 @@ describe("docked panel", function () {
     assert.equal(cfg.secretKey, "sk-123");
     assert.equal(cfg.model, "my-model");
     assert.approximately(cfg.temperature, 0.3, 1e-9);
+    assert.equal(cfg.contextLimit, 32000);
     const ecfg = provider().getEmbedConfig();
     assert.isTrue(ecfg.enabled);
     assert.equal(ecfg.api, "http://localhost:11434");
@@ -497,6 +500,22 @@ describe("docked panel", function () {
         (Zotero as any).Reader._readers = prevReaders;
       }
     }
+  });
+
+  it("shows a model + context-usage chip once an item is selected", async function () {
+    provider().setConfig({ api: "https://example.test/v1", model: "gpt-status-model", secretKey: "sk-test" });
+    const item = new Zotero.Item("journalArticle");
+    item.setField("title", "Status Chip Paper");
+    await item.saveTx();
+    host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(host);
+    api().renderPanel(host, item.id);
+    const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+    const status = panel.querySelector(`.${cls}-ctx-status`) as HTMLElement;
+    assert.ok(status, "status chip element rendered");
+    assert.isFalse(status.hidden, "status chip visible with an item selected");
+    assert.include(status.textContent || "", "gpt-status-model", "chip shows the configured model");
+    assert.include(status.textContent || "", "tok", "chip shows token usage");
   });
   it("does not register the old floating position:fixed overlay", function () {
     assert.equal(doc.querySelectorAll(`#${config.addonRef}`).length, 0);

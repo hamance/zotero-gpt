@@ -11,6 +11,8 @@ export interface ChatConfig {
   model: string;
   temperature: number;
   chatNumber: number;
+  /** Assumed context window (tokens) of the configured model, for the usage chip. */
+  contextLimit: number;
 }
 
 export interface ChatStream {
@@ -38,6 +40,7 @@ export function getConfig(): ChatConfig {
     model: String(getPref("model", "gpt-4o-mini") ?? ""),
     temperature: Number(getPref("temperature", 1.0)) || 1.0,
     chatNumber: Number(getPref("chatNumber", 12)) || 12,
+    contextLimit: Number(getPref("contextLimit", 128000)) || 128000,
   };
 }
 
@@ -49,6 +52,7 @@ export function setConfig(patch: Partial<ChatConfig>): void {
     ["model", patch.model],
     ["temperature", patch.temperature],
     ["chatNumber", patch.chatNumber],
+    ["contextLimit", patch.contextLimit],
   ];
   for (const [name, value] of entries) {
     if (value === undefined || value === null) continue;
