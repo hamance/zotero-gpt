@@ -235,3 +235,15 @@ Sub-stage plan (each stage: build + tests green before commit):
   - **Context chip restored** (compact): `.zoterogpt-ctx-status` in the context bar shows `model · used / limit tok · %`, refreshed on every message sync; `contextLimit` pref (default 128000) is back with a Settings field; `estimateTokens` re-added to `markdown.ts`.
 - Tests: markdown `estimateTokens` case; panel e2e "model + context-usage chip"; settings test asserts `contextLimit` persistence.
 - Gates: `npm run build` green; `npm test` → **53 passed**.
+
+### Stage 5h — Markdown actually renders in the real addon sandbox (2026-09-10)
+- **Symptom (user):** after 5g, "markdown not rendered" in the real GUI (tests were green).
+- **Root cause (found by instrumenting the real render path):** the assistant bubble ended up with the *raw* Markdown text inside `.markdown-body`, i.e. every DOM-injection attempt failed and the code fell back to plain text:
+  1. `innerHTML = html` and `range.createContextualFragment(html)` both throw `An invalid or illegal string was specified` in the Zotero XML/XUL document as soon as the HTML contains a bare `<br>` — which `markdown-it` (`breaks:true`) emits for every multi-line reply. Single-line test fixtures hid this.
+  2. The fallback `DOMParser(...)` + `Node.TEXT_NODE` path also failed in the **addon bootstrap sandbox**, where the `Node`/`DOMParser` globals are not the window ones (test code runs in the window context, so the tests passed).
+- **Fix (`src/modules/markdown.ts`, `src/modules/panel.ts`):**
+  - New `appendMarkdown(container, text, doc)`: render with `markdown-it`, parse with an HTML parser resolved as `doc.defaultView.DOMParser` (window parser, available from the panel document) with a guarded global fallback, then `doc.importNode` the nodes into the bubble. No `innerHTML`/`createContextualFragment` on the XML document.
+  - Use numeric `nodeType` constants (3/1) instead of the `Node` global.
+  - `renderMarkdown`/`sanitizeHtml` accept the document and resolve the parser the same way.
+- **Tests:** `appendMarkdown` unit test; an addon-sandbox parity test that deletes `window.Node` and still asserts `strong`/`br` render; the panel e2e assertion was split into async setup + synchronous assertions so failures are visible (the compact reporter hides messages for async tests).
+- Gates: `npm run build` green; `npm test` → **57 passed**.

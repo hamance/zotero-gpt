@@ -13,6 +13,31 @@ describe("docked panel", function () {
       probe.remove();
     }
   });
+
+  it("probe: HTML parser + importNode injects <br> content into the XUL document", function () {
+    const el = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+    doc.documentElement.appendChild(el);
+    try {
+      let threw: string | null = null;
+      try {
+        const parsed = new DOMParser().parseFromString("<p>line one<br>line two</p>", "text/html");
+        const body = parsed.body;
+        assert.ok(body, "parsed body present");
+        if (body) {
+          for (const node of Array.from(body.childNodes)) {
+            el.appendChild(doc.importNode(node, true));
+          }
+        }
+      } catch (e: any) {
+        threw = "THREW: " + (e?.message || e);
+      }
+      assert.equal(threw, null, "DOMParser+importNode should inject <br> content without throwing");
+      assert.include(el.querySelector("p")?.textContent || "", "line one", "content present");
+      assert.ok(el.querySelector("br"), "br node present after HTML-parser + importNode");
+    } finally {
+      el.remove();
+    }
+  });
   this.timeout(45000);
   const cls = config.addonRef;
   const win: any = Zotero.getMainWindow();
@@ -513,26 +538,43 @@ describe("docked panel", function () {
     }
   });
 
-  it("renders assistant replies as Markdown and keeps the conversation visible", async function () {
-    provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
-    mockHttp("**Bold** reply with `code`");
-    host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
-    doc.documentElement.appendChild(host);
-    api().renderPanel(host);
-    const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
-    const input = panel.querySelector("textarea") as HTMLTextAreaElement;
-    const send = panel.querySelector(`.${cls}-send`) as HTMLButtonElement;
-    input.value = "format please";
-    send.click();
-    await Zotero.Promise.delay(1400);
-    const bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+  it("streams a multi-element Markdown reply (setup)", async function () {
+    try {
+      provider().setConfig({ api: "https://example.test/v1", model: "gpt-test", secretKey: "sk-test" });
+      mockHttp("**Bold** reply with `code` and *emphasis*");
+      host = doc.createElementNS("http://www.w3.org/1999/xhtml", "div");
+      doc.documentElement.appendChild(host);
+      api().renderPanel(host);
+      const panel = host.querySelector(`.${cls}-panel`) as HTMLElement;
+      const input = panel.querySelector("textarea") as HTMLTextAreaElement;
+      const send = panel.querySelector(`.${cls}-send`) as HTMLButtonElement;
+      input.value = "format please";
+      send.click();
+      await Zotero.Promise.delay(1400);
+      const bubbles = Array.from(panel.querySelectorAll(`.${cls}-msg`)) as HTMLElement[];
+      (window as any).__mdBubbles = bubbles;
+      (window as any).__mdErr = null;
+    } catch (e: any) {
+      (window as any).__mdErr = e;
+    }
+  });
+
+  it("renders assistant replies as Markdown and keeps the conversation visible", function () {
+    const err = (window as any).__mdErr;
+    if (err) assert.fail("async setup error: " + (err?.message || err));
+    const bubbles = ((window as any).__mdBubbles || []) as HTMLElement[];
+    assert.isAtLeast(bubbles.length, 2, "user + assistant bubbles present");
     const assistants = bubbles.filter((b) => b.className.includes("assistant"));
-    const assistant = assistants[assistants.length - 1]; // last = the current reply (threads persist per item in module state)
+    const assistant = assistants[assistants.length - 1];
     assert.ok(assistant, "assistant bubble present after streaming");
     const md = assistant?.querySelector(".markdown-body") as HTMLElement | null;
     assert.ok(md, "assistant reply rendered inside .markdown-body");
-    assert.include(md?.innerHTML || "", "<strong>Bold</strong>", "markdown bold rendered");
-    assert.include(md?.innerHTML || "", "<code>code</code>", "markdown code rendered");
+    assert.equal(
+      md?.querySelector("strong")?.textContent,
+      "Bold",
+      "markdown bold rendered",
+    );
+    assert.equal(md?.querySelector("code")?.textContent, "code", "markdown code rendered");
     assert.ok(
       bubbles.some((b) => b.className.includes("user") && /format please/.test(b.textContent || "")),
       "user message kept beside the rendered reply",

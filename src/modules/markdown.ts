@@ -15,20 +15,40 @@ const md = new MarkdownIt({
 });
 
 /** Render Markdown to sanitized HTML suitable for innerHTML. */
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(text: string, doc?: Document): string {
   try {
     const html = md.render(text || "");
-    return sanitizeHtml(html);
+    return sanitizeHtml(html, doc);
   } catch {
     return escapeHtml(text || "");
   }
 }
 
-/** Strip event handlers and dangerous URL schemes from rendered HTML. */
-export function sanitizeHtml(html: string): string {
+/**
+ * Resolve a usable HTML parser. In the addon bootstrap sandbox the global
+ * `DOMParser` may be missing, so prefer the panel document's window parser.
+ */
+function getParser(doc?: Document): any {
   try {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const body = doc.body;
+    const fromWin = (doc?.defaultView as any)?.DOMParser;
+    if (fromWin) return fromWin;
+  } catch {
+    /* fall through */
+  }
+  try {
+    return (globalThis as any).DOMParser || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Strip event handlers and dangerous URL schemes from rendered HTML. */
+export function sanitizeHtml(html: string, doc?: Document): string {
+  try {
+    const Parser = getParser(doc);
+    if (!Parser) return html;
+    const parsed = new Parser().parseFromString(html, "text/html");
+    const body = parsed.body;
     if (!body) return html;
     const walk = (el: Element) => {
       for (const attr of Array.from(el.attributes)) {
@@ -51,6 +71,42 @@ export function sanitizeHtml(html: string): string {
   }
 }
 
+
+/**
+ * Parse rendered Markdown with the HTML parser (DOMParser "text/html") and
+ * append the resulting nodes into `container` via importNode.
+ *
+ * Needed because the Zotero UI document is XML/XUL: setting innerHTML (or
+ * createContextualFragment) with non-well-formed HTML such as a bare `<br>`
+ * throws "An invalid or illegal string was specified", which silently fell
+ * back to plain text and made Markdown appear unrendered.
+ */
+export function appendMarkdown(
+  container: Element,
+  text: string,
+  doc: Document,
+): void {
+  const html = renderMarkdown(text, doc);
+  const Parser = getParser(doc);
+  if (!Parser || !html) {
+    container.textContent = text;
+    return;
+  }
+  const parsed = new Parser().parseFromString(html, "text/html");
+  const body = parsed?.body;
+  if (!body) {
+    container.textContent = text;
+    return;
+  }
+  // 3 = TEXT_NODE, 1 = ELEMENT_NODE (avoid the `Node` global, which is not
+  // available in the addon bootstrap sandbox).
+  for (let i = 0; i < body.childNodes.length; i++) {
+    const node = body.childNodes[i];
+    if (node?.nodeType === 3 || node?.nodeType === 1) {
+      container.appendChild(doc.importNode(node, true));
+    }
+  }
+}
 /** Escape plain text for safe insertion as HTML. */
 export function escapeHtml(text: string): string {
   return String(text || "")

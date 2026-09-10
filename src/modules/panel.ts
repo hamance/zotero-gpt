@@ -1,6 +1,6 @@
 import { config } from "../../package.json";
 import { getLocaleID, getString } from "../utils/locale";
-import { estimateTokens, renderMarkdown } from "./markdown";
+import { appendMarkdown, estimateTokens } from "./markdown";
 import {
   ChatMessage,
   ChatStream,
@@ -394,7 +394,10 @@ function syncMessages(body: HTMLElement) {
       const inner = doc.createElementNS(XHTML, "div");
       inner.setAttribute("class", "markdown-body");
       try {
-        inner.innerHTML = renderMarkdown(content);
+        // Markdown output contains bare <br> (non-well-formed XML), which
+        // innerHTML/createContextualFragment reject in the XUL document;
+        // parse with the HTML parser and import the nodes instead.
+        appendMarkdown(inner, content, doc);
       } catch {
         inner.textContent = content;
       }
@@ -828,7 +831,7 @@ function wire(body: HTMLElement) {
           content: full || "(empty response)",
         });
       }
-    } catch (e: any) {
+} catch (e: any) {
       if (threadKey() === key) {
         thread().push({
           role: "assistant",
